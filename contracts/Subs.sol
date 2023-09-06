@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.19;
 
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
@@ -18,12 +18,12 @@ interface IERC4626 {
 contract Subs is BoringBatchable {
     using SafeTransferLib for ERC20;
 
-    uint40 public currentPeriod;
     uint40 public immutable periodDuration;
     ERC20 public immutable token;
     IERC4626 public immutable vault;
     address public immutable feeCollector;
     uint public immutable DIVISOR;
+    uint40 public currentPeriod;
     uint public sharesAccumulator;
     mapping(address => mapping(uint256 => uint256)) public receiverAmountToExpire;
     struct ReceiverBalance {
@@ -35,7 +35,7 @@ contract Subs is BoringBatchable {
     mapping(uint256 => uint256) public sharesPerPeriod;
     mapping(bytes32 => bool) public subs;
 
-    event NewSubscription(address owner, address receiver, uint amountPerCycle, uint expiration, uint initialShares);
+    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
 
     constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor){
         periodDuration = _periodDuration;
@@ -59,14 +59,21 @@ contract Subs is BoringBatchable {
     function _updateReceiver(address receiver) private {
         _updateGlobal();
         ReceiverBalance storage bal = receiverBalances[receiver];
-        while(bal.lastUpdate < block.timestamp){
-            bal.amountPerPeriod -= receiverAmountToExpire[receiver][bal.lastUpdate];
-            bal.balance += bal.amountPerPeriod * sharesPerPeriod[bal.lastUpdate];
-            bal.lastUpdate += periodDuration;
+        if(bal.lastUpdate < block.timestamp){
+            if(bal.lastUpdate == 0){
+                bal.lastUpdate = currentPeriod;
+            } else {
+                do {
+                    bal.amountPerPeriod -= receiverAmountToExpire[receiver][bal.lastUpdate];
+                    bal.balance += (bal.amountPerPeriod * sharesPerPeriod[bal.lastUpdate]) / DIVISOR;
+                    bal.lastUpdate += periodDuration;
+                } while (bal.lastUpdate < block.timestamp);
+            }
         }
     }
 
-    function getSubId(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) public pure returns (bytes32 id){
+    function getSubId(address owner, uint initialPeriod, uint expirationDate,
+        uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) public pure returns (bytes32 id){
         id = keccak256(
             abi.encode(
                 owner,
@@ -76,7 +83,7 @@ contract Subs is BoringBatchable {
                 receiver,
                 accumulator,
                 initialShares
-            ) // TODO: Is nonce needed
+            )
         );
     }
 
@@ -92,27 +99,30 @@ contract Subs is BoringBatchable {
         receiverBalances[receiver].amountPerPeriod += amountPerCycle;
         receiverBalances[receiver].balance += (shares * claimableThisPeriod) / amount;
         uint sharesLeft = (amountForFuture * shares) / amount;
-        subs[getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft)] = true; // TODO: sub can be overwritten!
-        emit NewSubscription(msg.sender, receiver, amountPerCycle, expiration, sharesLeft);
+        bytes32 subId = getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft);
+        require(subs[subId] == false, "duplicated sub");
+        subs[subId] = true;
+        emit NewSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {
         _updateGlobal();
         bytes32 subId = getSubId(msg.sender, initialPeriod, expirationDate, amountPerCycle, receiver, accumulator, initialShares);
-        require(subs[subId] == true);
-        subs[subId] = false;
+        require(subs[subId] == true, "sub doesn't exist");
+        delete subs[subId];
         if(expirationDate > block.timestamp){
-            uint sharesPaid = (sharesAccumulator - accumulator) * amountPerCycle;
+            uint sharesPaid = ((sharesAccumulator - accumulator) * amountPerCycle) / DIVISOR;
             uint sharesLeft = initialShares - sharesPaid;
             vault.redeem(sharesLeft, msg.sender, address(this));
             receiverAmountToExpire[receiver][expirationDate] -= amountPerCycle;
             receiverAmountToExpire[receiver][currentPeriod] += amountPerCycle;
         } else {
+            uint subsetAccumulator = 0;
             while(initialPeriod < expirationDate){
-                initialShares -= sharesPerPeriod[initialPeriod] * amountPerCycle;
+                subsetAccumulator += sharesPerPeriod[initialPeriod];
                 initialPeriod += periodDuration;
             }
-            vault.redeem(initialShares, msg.sender, address(this));
+            vault.redeem(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender, address(this));
         }
     }
 

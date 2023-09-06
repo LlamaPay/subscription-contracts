@@ -6,6 +6,7 @@ Possible approaches:
     - Good UX (no need to rebalance subs + better mental model)
     - low gas since you just need to deposit into a single pot
     - streams can be infinite if yield > payments
+    - all operations are O(1)
 - Use 
 
 
