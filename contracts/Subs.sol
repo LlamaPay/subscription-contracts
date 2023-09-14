@@ -43,6 +43,12 @@ contract Subs is BoringBatchable {
         vault = IERC4626(_vault);
         feeCollector = _feeCollector;
         DIVISOR = _divisor;
+        token.approve(_vault, type(uint256).max);
+    }
+
+    function refreshApproval() external {
+        token.approve(address(vault), 0);
+        token.approve(address(vault), type(uint256).max);
     }
 
     function _updateGlobal() private {
