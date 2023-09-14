@@ -10,6 +10,10 @@ const tokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
 
 const fe = (n:number) => ethers.parseEther(n.toString())
 
+async function getSub(call: Promise<any>){
+  return (await (await call).wait())?.logs.find((l:any)=>l.topics[0]==="0x75aabd19e348827dfa0d37beb9ada0c4ccaec489ee6d4f754b579b7722f210bc").args
+}
+
 describe("Subs", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
@@ -33,20 +37,23 @@ describe("Subs", function () {
     return { subs, token, owner, subReceiver, feeCollector, daiWhale };
   }
 
-  describe("Deployment", function () {
+  describe("Basic", function () {
     it("Should work", async function () {
       const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
-      await subs.subscribe(subReceiver.address, fe(5e3), 12);
+      const firstSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12));
       await time.increaseTo(await time.latest() + 30*24*3600);
-      //await subs.unsubscribe()
+      await subs.connect(daiWhale).unsubscribe(firstSub.initialPeriod, firstSub.expirationDate, firstSub.amountPerCycle, firstSub.receiver, firstSub.accumulator, firstSub.initialShares)
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0);
     });
 
     it("Should reduce funds", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       const prevBal = await token.balanceOf(daiWhale.address)
-      await subs.subscribe(subReceiver.address, fe(5e3), 12);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12);
 
-      expect(prevBal - await token.balanceOf(daiWhale.address)).to.equal(fe(5e3*12));
+      const diff = prevBal - await token.balanceOf(daiWhale.address)
+      expect(diff).to.be.greaterThan(fe(5e3*12));
+      expect(diff).to.be.lessThan(fe(2*5e3*12));
     });
   });
 /*

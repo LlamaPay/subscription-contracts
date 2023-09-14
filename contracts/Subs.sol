@@ -39,6 +39,7 @@ contract Subs is BoringBatchable {
 
     constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor){
         periodDuration = _periodDuration;
+        currentPeriod = uint40(block.timestamp);
         token = ERC20(_token);
         vault = IERC4626(_vault);
         feeCollector = _feeCollector;
@@ -65,7 +66,7 @@ contract Subs is BoringBatchable {
     function _updateReceiver(address receiver) private {
         _updateGlobal();
         ReceiverBalance storage bal = receiverBalances[receiver];
-        if(bal.lastUpdate < block.timestamp){
+        if(bal.lastUpdate + periodDuration < block.timestamp){
             if(bal.lastUpdate == 0){
                 bal.lastUpdate = currentPeriod;
             } else {
@@ -95,7 +96,7 @@ contract Subs is BoringBatchable {
 
     function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
         _updateReceiver(receiver);
-        uint claimableThisPeriod = (amountPerCycle * (currentPeriod - block.timestamp)) / periodDuration;
+        uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
         token.safeTransferFrom(msg.sender, address(this), amount);
