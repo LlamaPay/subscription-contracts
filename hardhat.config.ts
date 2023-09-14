@@ -8,9 +8,17 @@ const config: HardhatUserConfig = {
       viaIR: true,
       optimizer: {
         enabled: true,
-        runs: 100000,
+        runs: 4294967,
       },
     }
+  },
+  networks: {
+    hardhat: {
+      forking: {
+        url: "https://eth.llamarpc.com",
+        blockNumber: 17589468
+      }
+    },
   }
 };
 

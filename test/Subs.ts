@@ -6,59 +6,50 @@ import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
-describe("Lock", function () {
+const tokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
+
+const fe = (n:number) => ethers.parseEther(n.toString())
+
+describe("Subs", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
-  async function deployOneYearLockFixture() {
-    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-    const ONE_GWEI = 1_000_000_000;
-
-    const lockedAmount = ONE_GWEI;
-    const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
+  async function deployFixture() {
+    //const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
 
     // Contracts are deployed using the first signer/account by default
-    const [owner, otherAccount] = await ethers.getSigners();
+    const [owner, subReceiver, feeCollector] = await ethers.getSigners();
+    const daiWhale = await ethers.getImpersonatedSigner("0x075e72a5edf65f0a5f44699c7654c1a76941ddc8");
+    const token = new ethers.Contract(tokenAddress,
+        ["function balanceOf(address account) external view returns (uint256)",
+        "function approve(address spender, uint256 amount) external returns (bool)"
+    ], daiWhale)
 
-    const Lock = await ethers.getContractFactory("Lock");
-    const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+    const Subs = await ethers.getContractFactory("Subs");
+    const subs = await Subs.deploy(30*24*3600, tokenAddress, '0x83F20F44975D03b1b09e64809B757c47f942BEeA', feeCollector.address, fe(1));
 
-    return { lock, unlockTime, lockedAmount, owner, otherAccount };
+    await token.approve(await subs.getAddress(), fe(1e6))
+
+    return { subs, token, owner, subReceiver, feeCollector, daiWhale };
   }
 
   describe("Deployment", function () {
-    it("Should set the right unlockTime", async function () {
-      const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
-
-      expect(await lock.unlockTime()).to.equal(unlockTime);
+    it("Should work", async function () {
+      const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
+      await subs.subscribe(subReceiver.address, fe(5e3), 12);
+      await time.increaseTo(await time.latest() + 30*24*3600);
+      //await subs.unsubscribe()
     });
 
-    it("Should set the right owner", async function () {
-      const { lock, owner } = await loadFixture(deployOneYearLockFixture);
+    it("Should reduce funds", async function () {
+      const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
+      const prevBal = await token.balanceOf(daiWhale.address)
+      await subs.subscribe(subReceiver.address, fe(5e3), 12);
 
-      expect(await lock.owner()).to.equal(owner.address);
-    });
-
-    it("Should receive and store the funds to lock", async function () {
-      const { lock, lockedAmount } = await loadFixture(
-        deployOneYearLockFixture
-      );
-
-      expect(await ethers.provider.getBalance(lock.target)).to.equal(
-        lockedAmount
-      );
-    });
-
-    it("Should fail if the unlockTime is not in the future", async function () {
-      // We don't use the fixture here because we want a different deployment
-      const latestTime = await time.latest();
-      const Lock = await ethers.getContractFactory("Lock");
-      await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
-        "Unlock time should be in the future"
-      );
+      expect(prevBal - await token.balanceOf(daiWhale.address)).to.equal(fe(5e3*12));
     });
   });
-
+/*
   describe("Withdrawals", function () {
     describe("Validations", function () {
       it("Should revert with the right error if called too soon", async function () {
@@ -124,4 +115,5 @@ describe("Lock", function () {
       });
     });
   });
+  */
 });
