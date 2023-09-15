@@ -49,7 +49,7 @@ describe("Subs", function () {
     it("Should work", async function () {
       const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
       const firstSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12));
-      await time.increaseTo(await time.latest() + 30*24*3600);
+      await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(firstSub.initialPeriod, firstSub.expirationDate, firstSub.amountPerCycle, firstSub.receiver, firstSub.accumulator, firstSub.initialShares)
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0);
     });
@@ -57,13 +57,26 @@ describe("Subs", function () {
     it("Should reduce funds", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       const prevBal = await token.balanceOf(daiWhale.address)
-      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12);
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12));
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
       expect(diff).to.be.approximately(fe(5e3*13), fe(1));
+
+      await subs.connect(daiWhale).unsubscribe(sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares)
+      expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5e3), fe(1));
     });
 
-    it("receiver gets funds properly", async function () {
+    it("should charge 30% while in 70% of the month", async function () {
+      const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
+      await time.increase(30*24*3600*0.7);
+      const prevBal = await token.balanceOf(daiWhale.address)
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0));
+
+      const diff = prevBal - await token.balanceOf(daiWhale.address)
+      expect(diff).to.be.approximately(fe(5e3*0.3), fe(1));
+    });
+
+    it("receiver & feeCollector gets funds properly", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12);
       console.log(await subs.currentPeriod(), await time.latest(), await time.latest() - Number(await subs.currentPeriod()))
@@ -74,6 +87,36 @@ describe("Subs", function () {
       expect(await token.balanceOf(subReceiver.address)).to.be.approximately(fe(5e3*0.99), fe(1));
       expect(await vault.balanceOf(feeCollector.address)).to.be.approximately(fe(5e3*0.01), fe(1)); // 1% collected by feeCollector
     });
+
+    it("if yield is higher than costs, user doesnt lose money", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
+      const prevBal = await token.balanceOf(daiWhale.address)
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), 700)); // yield is 2%
+
+      const diff = prevBal - await token.balanceOf(daiWhale.address)
+      expect(diff).to.be.approximately(fe(7010), fe(1));
+
+      await time.increase(365*24*3600*5); // 5yr
+      await subs.connect(daiWhale).unsubscribe(sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares)
+      expect(await token.balanceOf(daiWhale.address)).to.be.greaterThan(prevBal);
+
+      expect(await token.balanceOf(subReceiver.address)).to.be.eq(0);
+      await subs.connect(subReceiver).claim(fe(1)); // update balances info
+      await subs.connect(subReceiver).claim((await subs.receiverBalances(subReceiver.address)).balance)
+      expect(await token.balanceOf(subReceiver.address)).to.be.approximately(fe(600*0.99+10), fe(1));
+      const receiverBalance = await subs.receiverBalances(subReceiver.address)
+      expect(receiverBalance.balance).to.be.eq(0);
+      expect(receiverBalance.amountPerPeriod).to.be.eq(0);
+    });
+
+    it("unsub after sub has expired", async function () {
+    })
+
+    it("claim correctly discounts expirations", async function () {
+    })
+
+    it("works well with tokens that have different decimals", async function () {
+    })
   });
 /*
   describe("Withdrawals", function () {
