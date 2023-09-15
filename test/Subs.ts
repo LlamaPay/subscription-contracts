@@ -118,6 +118,13 @@ describe("Subs", function () {
     it("works well with tokens that have different decimals", async function () {
     })
 
+    it("claim after 2 periods", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0);
+      await time.increase(2*30*24*3600);
+      await subs.connect(subReceiver).claim(fe(0.9));
+    })
+
     it("max out _updateGlobal gas", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0);

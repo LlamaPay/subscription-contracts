@@ -59,10 +59,10 @@ contract Subs is BoringBatchable {
     function _updateGlobal() private {
         if(block.timestamp > currentPeriod + periodDuration){
             uint shares = vault.convertToShares(DIVISOR);
+            sharesAccumulator = ((block.timestamp - currentPeriod)/periodDuration)*shares; // Loss of precision here is a wanted effect
             do {
                 sharesPerPeriod[currentPeriod] = shares;
                 currentPeriod += periodDuration;
-                sharesAccumulator += shares; // TODO: reduce this to a single sstore? could just be shares*periodDifference/periodDuration
             } while(block.timestamp > currentPeriod + periodDuration);
         }
     }
