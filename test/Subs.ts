@@ -117,6 +117,15 @@ describe("Subs", function () {
 
     it("works well with tokens that have different decimals", async function () {
     })
+
+    it("max out _updateGlobal gas", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0);
+      const cycles = 500
+      await time.increase(cycles*30*24*3600);
+      const rec = await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0)
+      expect((await rec.wait())?.gasUsed).to.be.lessThan(15e6) // 15M is the block limit
+    })
   });
 /*
   describe("Withdrawals", function () {

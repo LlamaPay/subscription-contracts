@@ -39,7 +39,9 @@ contract Subs is BoringBatchable {
 
     constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor, uint40 _currentPeriod){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
-        require(_periodDuration >= 1 days, "periodDuration too smol");
+        // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
+        // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
+        require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         token = ERC20(_token);
