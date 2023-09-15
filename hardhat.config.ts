@@ -15,8 +15,8 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       forking: {
-        url: "https://eth.llamarpc.com",
-        blockNumber: 17589468
+        url: "https://rpc.ankr.com/optimism", //"https://eth.llamarpc.com",
+        //blockNumber: 17589468
       }
     },
   }

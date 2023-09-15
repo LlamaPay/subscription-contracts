@@ -6,7 +6,10 @@ import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
-const tokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F'
+const mainnet = false
+const tokenAddress = mainnet?'0x6B175474E89094C44Da98b954EedeAC495271d0F':'0xda10009cbd5d07dd0cecc66161fc93d7c9000da1'
+const vaultAddress = mainnet?'0x83F20F44975D03b1b09e64809B757c47f942BEeA':'0x65343F414FFD6c97b0f6add33d16F6845Ac22BAc'
+const whaleAddress = mainnet?'0x075e72a5edf65f0a5f44699c7654c1a76941ddc8':'0x9cd4ff80d81e4dda8e9d637887a5db7e0c8e007b'
 
 const fe = (n:number) => ethers.parseEther(n.toString())
 
@@ -23,14 +26,14 @@ describe("Subs", function () {
 
     // Contracts are deployed using the first signer/account by default
     const [owner, subReceiver, feeCollector] = await ethers.getSigners();
-    const daiWhale = await ethers.getImpersonatedSigner("0x075e72a5edf65f0a5f44699c7654c1a76941ddc8");
+    const daiWhale = await ethers.getImpersonatedSigner(whaleAddress);
     const token = new ethers.Contract(tokenAddress,
         ["function balanceOf(address account) external view returns (uint256)",
         "function approve(address spender, uint256 amount) external returns (bool)"
     ], daiWhale)
 
     const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, tokenAddress, '0x83F20F44975D03b1b09e64809B757c47f942BEeA', feeCollector.address, fe(1));
+    const subs = await Subs.deploy(30*24*3600, tokenAddress, vaultAddress, feeCollector.address, fe(1));
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
