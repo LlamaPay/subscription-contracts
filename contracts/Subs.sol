@@ -18,18 +18,18 @@ interface IERC4626 {
 contract Subs is BoringBatchable {
     using SafeTransferLib for ERC20;
 
-    uint40 public immutable periodDuration;
+    uint public immutable periodDuration;
     ERC20 public immutable token;
     IERC4626 public immutable vault;
     address public immutable feeCollector;
     uint public immutable DIVISOR;
-    uint40 public currentPeriod;
+    uint public currentPeriod;
     uint public sharesAccumulator;
     mapping(address => mapping(uint256 => uint256)) public receiverAmountToExpire;
     struct ReceiverBalance {
         uint256 balance;
         uint256 amountPerPeriod;
-        uint40 lastUpdate;
+        uint256 lastUpdate;
     }
     mapping(address => ReceiverBalance) public receiverBalances;
     mapping(uint256 => uint256) public sharesPerPeriod;
@@ -37,7 +37,7 @@ contract Subs is BoringBatchable {
 
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
 
-    constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor, uint40 _currentPeriod){
+    constructor(uint _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor, uint _currentPeriod){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
