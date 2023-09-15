@@ -38,6 +38,8 @@ contract Subs is BoringBatchable {
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
 
     constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor, uint40 _currentPeriod){
+        // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
+        require(_periodDuration >= 1 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         token = ERC20(_token);
@@ -96,6 +98,8 @@ contract Subs is BoringBatchable {
 
     function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
         _updateReceiver(receiver);
+        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal()
+        // so (currentPeriod + periodDuration - block.timestamp) will never underflow
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
@@ -118,12 +122,14 @@ contract Subs is BoringBatchable {
         require(subs[subId] == true, "sub doesn't exist");
         delete subs[subId];
         if(expirationDate > block.timestamp){
+            // Most common case, solved in O(1)
             uint sharesPaid = ((sharesAccumulator - accumulator) * amountPerCycle) / DIVISOR;
             uint sharesLeft = initialShares - sharesPaid;
             vault.redeem(sharesLeft, msg.sender, address(this));
             receiverAmountToExpire[receiver][expirationDate] -= amountPerCycle;
             receiverAmountToExpire[receiver][currentPeriod] += amountPerCycle;
         } else {
+            // Uncommon case, its just claiming yield generated after sub expired
             uint subsetAccumulator = 0;
             while(initialPeriod < expirationDate){
                 subsetAccumulator += sharesPerPeriod[initialPeriod];

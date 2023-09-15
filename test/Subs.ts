@@ -31,13 +31,18 @@ describe("Subs", function () {
         ["function balanceOf(address account) external view returns (uint256)",
         "function approve(address spender, uint256 amount) external returns (bool)"
     ], daiWhale)
+    const vault = new ethers.Contract(vaultAddress,
+      ["function balanceOf(address account) external view returns (uint256)",
+      "function convertToAssets(uint256 shares) external view returns (uint256)",
+      "function convertToShares(uint256 assets) external view returns (uint256)"
+    ], daiWhale)
 
     const Subs = await ethers.getContractFactory("Subs");
     const subs = await Subs.deploy(30*24*3600, tokenAddress, vaultAddress, feeCollector.address, fe(1), await time.latest());
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
-    return { subs, token, owner, subReceiver, feeCollector, daiWhale };
+    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault };
   }
 
   describe("Basic", function () {
@@ -55,8 +60,19 @@ describe("Subs", function () {
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12);
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
-      expect(diff).to.be.greaterThan(fe(5e3*12));
-      expect(diff).to.be.lessThan(fe(2*5e3*12));
+      expect(diff).to.be.approximately(fe(5e3*13), fe(1));
+    });
+
+    it("receiver gets funds properly", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12);
+      console.log(await subs.currentPeriod(), await time.latest(), await time.latest() - Number(await subs.currentPeriod()))
+      const shares = await vault.convertToShares(fe(5e3))
+      const receiverSharesBalance = (await subs.receiverBalances(subReceiver.address)).balance
+      expect(receiverSharesBalance).to.be.approximately(shares, fe(1));
+      await subs.connect(subReceiver).claim(receiverSharesBalance)
+      expect(await token.balanceOf(subReceiver.address)).to.be.approximately(fe(5e3*0.99), fe(1));
+      expect(await vault.balanceOf(feeCollector.address)).to.be.approximately(fe(5e3*0.01), fe(1)); // 1% collected by feeCollector
     });
   });
 /*
