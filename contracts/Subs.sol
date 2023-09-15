@@ -37,9 +37,9 @@ contract Subs is BoringBatchable {
 
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
 
-    constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor){
+    constructor(uint40 _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor, uint40 _currentPeriod){
         periodDuration = _periodDuration;
-        currentPeriod = uint40(block.timestamp);
+        currentPeriod = _currentPeriod;
         token = ERC20(_token);
         vault = IERC4626(_vault);
         feeCollector = _feeCollector;
