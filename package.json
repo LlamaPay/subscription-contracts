@@ -5,6 +5,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
+    "build": "hardhat compile",
     "test": "hardhat test"
   },
   "author": "",

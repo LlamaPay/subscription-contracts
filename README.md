@@ -15,8 +15,8 @@ Possible approaches:
 
 ## Commands
 ```shell
-npx hardhat compile
-npx hardhat test
-REPORT_GAS=true npx hardhat test
+npm build
+npm test
+REPORT_GAS=true npm test
 npx hardhat run scripts/deploy.ts
 ```
