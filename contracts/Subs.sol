@@ -83,13 +83,6 @@ contract Subs is BoringBatchable {
         }
     }
 
-    // Meant to be called with staticCall
-    function getReceiverState(address receiver) external returns (ReceiverBalance memory) {
-        _updateReceiver(receiver);
-        return receiverBalances[receiver];
-    }
-
-
     function getSubId(address owner, uint initialPeriod, uint expirationDate,
         uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) public pure returns (bytes32 id){
         id = keccak256(
