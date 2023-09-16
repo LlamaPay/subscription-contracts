@@ -29,7 +29,7 @@ contract Subs is BoringBatchable {
     struct ReceiverBalance {
         uint256 balance;
         uint256 amountPerPeriod;
-        uint256 lastUpdate; // Invariant: lastUpdate <= block.timestamp
+        uint256 lastUpdate; // Invariant: lastUpdate <= currentPeriod
     }
     mapping(address => ReceiverBalance) public receiverBalances;
     mapping(uint256 => uint256) public sharesPerPeriod;
