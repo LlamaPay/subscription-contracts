@@ -175,6 +175,14 @@ describe("Subs", function () {
       expect((await subs.receiverBalances(subReceiver.address)).amountPerPeriod).to.be.eq(fe(0.0001));
     });
 
+    it("can claim right after currentPeriod changes", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
+      await time.increase(29*24*3600);
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      await time.increase(2*24*3600);
+      await subs.connect(subReceiver).claim(fe(13.1));
+    })
+
     it("unsub after sub has expired", async function () {
     })
 
