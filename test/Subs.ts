@@ -11,7 +11,11 @@ const tokenAddress = mainnet?'0x6B175474E89094C44Da98b954EedeAC495271d0F':'0xda1
 const vaultAddress = mainnet?'0x83F20F44975D03b1b09e64809B757c47f942BEeA':'0x85c6Cd5fC71AF35e6941d7b53564AC0A68E09f5C' // sDAI : 4626 aDAI
 const whaleAddress = mainnet?'0x075e72a5edf65f0a5f44699c7654c1a76941ddc8':'0x9cd4ff80d81e4dda8e9d637887a5db7e0c8e007b'
 
+const usdcAddress = mainnet?'-':'0x7f5c764cbc14f9669b88837ca1490cca17c31607'
+const usdcVault = mainnet?'-':'0x6E6699E4B8eE4Bf35E72a41fe366116ff4C5A3dF'
+
 const fe = (n:number) => ethers.parseEther(n.toString())
+const de = (n:bigint|any) => Number(n)/1e18
 
 async function getSub(call: Promise<any>){
   return (await (await call).wait())?.logs.find((l:any)=>l.topics[0]==="0x75aabd19e348827dfa0d37beb9ada0c4ccaec489ee6d4f754b579b7722f210bc").args
@@ -21,29 +25,83 @@ function unsubscribeParams(sub:any){
   return [sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares] as [any, any, any, any, any, any]
 }
 
+const dd = (n:any) => new Date(Number(n) * 1e3).toISOString().split('T')[0]
+
+async function displayTimes(subs:any, time:any){
+  console.log(dd(await subs.currentPeriod()), dd(await time.latest()))
+}
+
+async function calculateSubBalance(sub: any, subs: any, currentTimestamp: number, vault: any, DIVISOR: bigint, periodDuration: number) {
+  if (sub.expirationDate > currentTimestamp) {
+    let [sharesAccumulator, currentPeriod] = await Promise.all([subs.sharesAccumulator(), subs.currentPeriod()])
+    if (Number(currentPeriod) + periodDuration < currentTimestamp) {
+      const shares = await vault.convertToShares(DIVISOR);
+      sharesAccumulator += BigInt(Math.floor((currentTimestamp - Number(currentPeriod)) / periodDuration)) * shares;
+    }
+    const sharesPaid = ((sharesAccumulator - sub.accumulator) * sub.amountPerCycle) / (DIVISOR as any);
+    const sharesLeft = sub.initialShares - sharesPaid;
+    return vault.convertToAssets(sharesLeft)
+  } else {
+    const periods = []
+    for (let period = sub.initialPeriod; period < sub.expirationDate; period += BigInt(periodDuration)) {
+      periods.push(period)
+    }
+    const [currentSharePrice, ...periodShares] = await Promise.all([
+      vault.convertToShares(DIVISOR),
+      ...periods.map(p => subs.sharesPerPeriod(p))
+    ])
+    let subsetAccumulator = 0n;
+    periodShares.forEach((shares) => {
+      subsetAccumulator += shares === 0n ? currentSharePrice : shares;
+    })
+    return vault.convertToAssets(sub.initialShares - ((subsetAccumulator * (sub.amountPerCycle as bigint)) / DIVISOR));
+  }
+}
+
 describe("Subs", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
   async function deployFixture() {
-    //const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
-
     // Contracts are deployed using the first signer/account by default
     const [owner, subReceiver, feeCollector, otherSubscriber] = await ethers.getSigners();
     const daiWhale = await ethers.getImpersonatedSigner(whaleAddress);
-    const token = new ethers.Contract(tokenAddress,
-        ["function balanceOf(address account) external view returns (uint256)",
+    const token = new ethers.Contract(tokenAddress,[
+        "function balanceOf(address account) external view returns (uint256)",
         "function approve(address spender, uint256 amount) external returns (bool)",
         "function transfer(address spender, uint256 amount) external returns (bool)"
     ], daiWhale)
-    const vault = new ethers.Contract(vaultAddress,
-      ["function balanceOf(address account) external view returns (uint256)",
+    const vault = new ethers.Contract(vaultAddress,[
+      "function balanceOf(address account) external view returns (uint256)",
       "function convertToAssets(uint256 shares) external view returns (uint256)",
       "function convertToShares(uint256 assets) external view returns (uint256)"
     ], daiWhale)
 
     const Subs = await ethers.getContractFactory("Subs");
     const subs = await Subs.deploy(30*24*3600, tokenAddress, vaultAddress, feeCollector.address, fe(1), await time.latest());
+
+    await token.approve(await subs.getAddress(), fe(1e6))
+
+    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault, otherSubscriber };
+  }
+
+  async function deployUsdcFixture() {
+    // Contracts are deployed using the first signer/account by default
+    const [owner, subReceiver, feeCollector, otherSubscriber] = await ethers.getSigners();
+    const daiWhale = await ethers.getImpersonatedSigner(whaleAddress);
+    const token = new ethers.Contract(usdcAddress,[
+        "function balanceOf(address account) external view returns (uint256)",
+        "function approve(address spender, uint256 amount) external returns (bool)",
+        "function transfer(address spender, uint256 amount) external returns (bool)"
+    ], daiWhale)
+    const vault = new ethers.Contract(usdcVault,[
+      "function balanceOf(address account) external view returns (uint256)",
+      "function convertToAssets(uint256 shares) external view returns (uint256)",
+      "function convertToShares(uint256 assets) external view returns (uint256)"
+    ], daiWhale)
+
+    const Subs = await ethers.getContractFactory("Subs");
+    const subs = await Subs.deploy(30*24*3600, usdcAddress, usdcVault, feeCollector.address, 1e6, await time.latest());
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
@@ -111,7 +169,10 @@ describe("Subs", function () {
       expect(await token.balanceOf(subReceiver.address)).to.be.approximately(fe(600*0.99+10), fe(1));
       const receiverBalance = await subs.receiverBalances(subReceiver.address)
       expect(receiverBalance.balance).to.be.eq(0);
-      expect(receiverBalance.amountPerPeriod).to.be.eq(0);
+      expect(receiverBalance.amountPerPeriod).to.be.eq(fe(10));
+      await time.increase(30*24*3600);
+      await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.0001), 700));
+      expect((await subs.receiverBalances(subReceiver.address)).amountPerPeriod).to.be.eq(fe(0.0001));
     });
 
     it("unsub after sub has expired", async function () {
@@ -123,6 +184,29 @@ describe("Subs", function () {
     it("works well with tokens that have different decimals", async function () {
     })
 
+    it("receiver earns yield", async function () {
+    })
+
+    it("balance through months", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
+      await time.increase(29*24*3600);
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      for(let i=0; i<14; i++){
+        console.log(dd(await time.latest()), de(await calculateSubBalance(whaleSub, subs, await time.latest(), vault, fe(1), 30*24*3600)))
+        await time.increase(30*24*3600);
+      }
+      console.log("global update")
+      await subs.connect(subReceiver).claim(fe(0.01));
+      for(let i=0; i<5; i++){
+        console.log(dd(await time.latest()), de(await calculateSubBalance(whaleSub, subs, await time.latest(), vault, fe(1), 30*24*3600)))
+        await time.increase(30*24*3600);
+      }
+      const prevBal = await token.balanceOf(daiWhale.address)
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
+      const postBal = await token.balanceOf(daiWhale.address)
+      console.log("final", de(postBal - prevBal))
+    })
+
     it("2 subscribers + refreshApproval", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
@@ -131,30 +215,42 @@ describe("Subs", function () {
       await subs.refreshApproval();
 
       await token.transfer(otherSubscriber.address, fe(1e3))
-      const token2 = new ethers.Contract(tokenAddress,
-        ["function balanceOf(address account) external view returns (uint256)",
+      const token2 = new ethers.Contract(tokenAddress,[
+        "function balanceOf(address account) external view returns (uint256)",
         "function approve(address spender, uint256 amount) external returns (bool)"
-    ], otherSubscriber)
+      ], otherSubscriber)
       await token2.approve(await subs.getAddress(), fe(1e3))
       const otherSub = await getSub(subs.connect(otherSubscriber).subscribe(subReceiver.address, fe(13), 7));
+      let otherSubBalance = 91
+      expect(await calculateSubBalance(otherSub, subs, await time.latest(), vault, fe(1), 30*24*3600)).to.be.approximately(fe(otherSubBalance), fe(0.1))
+      //expect((await subs.receiverBalances(subReceiver.address)).balance).to.be.approximately(fe(14), fe(0))
+
 
       await time.increase(3*30*24*3600);
       await subs.connect(subReceiver).claim(fe(0.01));
+      otherSubBalance += -3*13 + (91)*0.02*3/12
+      expect(await calculateSubBalance(otherSub, subs, await time.latest(), vault, fe(1), 30*24*3600)).to.be.approximately(fe(otherSubBalance), fe(0.1))
       await subs.connect(subReceiver).claim((await subs.receiverBalances(subReceiver.address)).balance);
+      expect((await subs.receiverBalances(subReceiver.address)).balance).to.be.eq(0)
       const firstBal = await token.balanceOf(subReceiver.address)
       expect(firstBal).to.be.approximately(fe(7*5+13*3), fe(1))
       await time.increase(1*30*24*3600);
+      otherSubBalance += -1*13 + (otherSubBalance)*0.02*1/12
+      expect(await calculateSubBalance(otherSub, subs, await time.latest(), vault, fe(1), 30*24*3600)).to.be.approximately(fe(otherSubBalance), fe(0.1))
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
       await time.increase(10*30*24*3600);
+      otherSubBalance += -3*13 + (otherSubBalance)*0.02*10/12
+      expect(await calculateSubBalance(otherSub, subs, await time.latest(), vault, fe(1), 30*24*3600)).to.be.approximately(fe(otherSubBalance), fe(0.1))
       await subs.connect(subReceiver).claim(fe(0.01));
       await subs.connect(subReceiver).claim((await subs.receiverBalances(subReceiver.address)).balance);
       const secondBal = await token.balanceOf(subReceiver.address)
-      expect(secondBal-firstBal).to.be.approximately(fe(7*1+13*3), fe(1))
+      expect(secondBal-firstBal).to.be.approximately(fe(7*1+13*4), fe(1))
       const prevOtherBal = await token.balanceOf(otherSubscriber.address)
       await subs.connect(otherSubscriber).unsubscribe(...unsubscribeParams(otherSub))
-      expect(await token.balanceOf(otherSubscriber.address)-prevOtherBal).to.be.approximately(fe(7), fe(1))
+      expect(await token.balanceOf(otherSubscriber.address)-prevOtherBal).to.be.approximately(fe(1.2), fe(0.1))
+      expect(await vault.balanceOf(await subs.getAddress())).to.be.approximately(0, 4)
       await time.increase(5*30*24*3600);
-      await expect(subs.connect(subReceiver).claim(fe(0.01))).to.be.revertedWith("wrong bu!")
+      await expect(subs.connect(subReceiver).claim(fe(0.01))).to.be.reverted
     })
 
 
