@@ -17,6 +17,10 @@ async function getSub(call: Promise<any>){
   return (await (await call).wait())?.logs.find((l:any)=>l.topics[0]==="0x75aabd19e348827dfa0d37beb9ada0c4ccaec489ee6d4f754b579b7722f210bc").args
 }
 
+function unsubscribeParams(sub:any){
+  return [sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares] as [any, any, any, any, any, any]
+}
+
 describe("Subs", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
@@ -25,11 +29,12 @@ describe("Subs", function () {
     //const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
 
     // Contracts are deployed using the first signer/account by default
-    const [owner, subReceiver, feeCollector] = await ethers.getSigners();
+    const [owner, subReceiver, feeCollector, otherSubscriber] = await ethers.getSigners();
     const daiWhale = await ethers.getImpersonatedSigner(whaleAddress);
     const token = new ethers.Contract(tokenAddress,
         ["function balanceOf(address account) external view returns (uint256)",
-        "function approve(address spender, uint256 amount) external returns (bool)"
+        "function approve(address spender, uint256 amount) external returns (bool)",
+        "function transfer(address spender, uint256 amount) external returns (bool)"
     ], daiWhale)
     const vault = new ethers.Contract(vaultAddress,
       ["function balanceOf(address account) external view returns (uint256)",
@@ -42,7 +47,7 @@ describe("Subs", function () {
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
-    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault };
+    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault, otherSubscriber };
   }
 
   describe("Basic", function () {
@@ -50,7 +55,7 @@ describe("Subs", function () {
       const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
       const firstSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 12));
       await time.increase(30*24*3600);
-      await subs.connect(daiWhale).unsubscribe(firstSub.initialPeriod, firstSub.expirationDate, firstSub.amountPerCycle, firstSub.receiver, firstSub.accumulator, firstSub.initialShares)
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0);
     });
 
@@ -62,7 +67,7 @@ describe("Subs", function () {
       const diff = prevBal - await token.balanceOf(daiWhale.address)
       expect(diff).to.be.approximately(fe(5e3*13), fe(1));
 
-      await subs.connect(daiWhale).unsubscribe(sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares)
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5e3), fe(1));
     });
 
@@ -97,7 +102,7 @@ describe("Subs", function () {
       expect(diff).to.be.approximately(fe(7010), fe(1));
 
       await time.increase(365*24*3600*5); // 5yr
-      await subs.connect(daiWhale).unsubscribe(sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares)
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
       expect(await token.balanceOf(daiWhale.address)).to.be.greaterThan(prevBal);
 
       expect(await token.balanceOf(subReceiver.address)).to.be.eq(0);
@@ -117,6 +122,41 @@ describe("Subs", function () {
 
     it("works well with tokens that have different decimals", async function () {
     })
+
+    it("2 subscribers + refreshApproval", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
+      await time.increase(29*24*3600);
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(7), 10));
+      await time.increase(2*30*24*3600);
+      await subs.refreshApproval();
+
+      await token.transfer(otherSubscriber.address, fe(1e3))
+      const token2 = new ethers.Contract(tokenAddress,
+        ["function balanceOf(address account) external view returns (uint256)",
+        "function approve(address spender, uint256 amount) external returns (bool)"
+    ], otherSubscriber)
+      await token2.approve(await subs.getAddress(), fe(1e3))
+      const otherSub = await getSub(subs.connect(otherSubscriber).subscribe(subReceiver.address, fe(13), 7));
+
+      await time.increase(3*30*24*3600);
+      await subs.connect(subReceiver).claim(fe(0.01));
+      await subs.connect(subReceiver).claim((await subs.receiverBalances(subReceiver.address)).balance);
+      const firstBal = await token.balanceOf(subReceiver.address)
+      expect(firstBal).to.be.approximately(fe(7*5+13*3), fe(1))
+      await time.increase(1*30*24*3600);
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
+      await time.increase(10*30*24*3600);
+      await subs.connect(subReceiver).claim(fe(0.01));
+      await subs.connect(subReceiver).claim((await subs.receiverBalances(subReceiver.address)).balance);
+      const secondBal = await token.balanceOf(subReceiver.address)
+      expect(secondBal-firstBal).to.be.approximately(fe(7*1+13*3), fe(1))
+      const prevOtherBal = await token.balanceOf(otherSubscriber.address)
+      await subs.connect(otherSubscriber).unsubscribe(...unsubscribeParams(otherSub))
+      expect(await token.balanceOf(otherSubscriber.address)-prevOtherBal).to.be.approximately(fe(7), fe(1))
+      await time.increase(5*30*24*3600);
+      await expect(subs.connect(subReceiver).claim(fe(0.01))).to.be.revertedWith("wrong bu!")
+    })
+
 
     it("claim after 2 periods", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);

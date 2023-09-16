@@ -59,7 +59,7 @@ contract Subs is BoringBatchable {
     function _updateGlobal() private {
         if(block.timestamp > currentPeriod + periodDuration){
             uint shares = vault.convertToShares(DIVISOR);
-            sharesAccumulator = ((block.timestamp - currentPeriod)/periodDuration)*shares; // Loss of precision here is a wanted effect
+            sharesAccumulator += ((block.timestamp - currentPeriod)/periodDuration)*shares; // Loss of precision here is a wanted effect
             do {
                 sharesPerPeriod[currentPeriod] = shares;
                 currentPeriod += periodDuration;
@@ -68,18 +68,24 @@ contract Subs is BoringBatchable {
     }
 
     function _updateReceiver(address receiver) private {
-        _updateGlobal();
         ReceiverBalance storage bal = receiverBalances[receiver];
-        if(bal.lastUpdate + periodDuration < block.timestamp){
-            if(bal.lastUpdate == 0){
-                bal.lastUpdate = currentPeriod;
+        uint lastUpdate = bal.lastUpdate;
+        if(lastUpdate + periodDuration < block.timestamp){
+            _updateGlobal();
+            if(lastUpdate == 0){
+                lastUpdate = currentPeriod;
             } else {
+                uint balance = bal.balance;
+                uint amountPerPeriod = bal.amountPerPeriod;
                 do {
-                    bal.amountPerPeriod -= receiverAmountToExpire[receiver][bal.lastUpdate];
-                    bal.balance += (bal.amountPerPeriod * sharesPerPeriod[bal.lastUpdate]) / DIVISOR;
-                    bal.lastUpdate += periodDuration;
-                } while (bal.lastUpdate < block.timestamp);
+                    amountPerPeriod -= receiverAmountToExpire[receiver][lastUpdate];
+                    balance += (amountPerPeriod * sharesPerPeriod[lastUpdate]) / DIVISOR;
+                    lastUpdate += periodDuration;
+                } while (lastUpdate < currentPeriod);
+                bal.balance = balance;
+                bal.amountPerPeriod = amountPerPeriod;
             }
+            bal.lastUpdate = lastUpdate;
         }
     }
 
