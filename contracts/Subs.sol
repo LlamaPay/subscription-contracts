@@ -71,10 +71,11 @@ contract Subs is BoringBatchable {
         ReceiverBalance storage bal = receiverBalances[receiver];
         uint lastUpdate = bal.lastUpdate;
         if(lastUpdate + periodDuration < block.timestamp){
-            _updateGlobal();
+            _updateGlobal(); // if lastUpdate is up to date then currentPeriod must be up to date since lastUpdate is only updated after calling _updateGlobal()
             if(lastUpdate == 0){
                 lastUpdate = currentPeriod;
             } else {
+                // This optimization can increase costs a little on subscribe() but decreases costs a lot when _updateReceiver() hasnt been called in a long time
                 uint balance = bal.balance;
                 uint amountPerPeriod = bal.amountPerPeriod;
                 do {

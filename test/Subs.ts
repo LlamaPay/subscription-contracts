@@ -187,6 +187,9 @@ describe("Subs", function () {
     it("receiver earns yield", async function () {
     })
 
+    it("share prices are tracked properly (testing with wild swings)", async function () {
+    })
+
     it("balance through months", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
