@@ -22,14 +22,14 @@ contract Subs is BoringBatchable {
     ERC20 public immutable token;
     IERC4626 public immutable vault;
     address public immutable feeCollector;
-    uint public immutable DIVISOR;
-    uint public currentPeriod;
+    uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
+    uint public currentPeriod; // Invariant: currentPeriod <= block.timestamp
     uint public sharesAccumulator;
     mapping(address => mapping(uint256 => uint256)) public receiverAmountToExpire;
     struct ReceiverBalance {
         uint256 balance;
         uint256 amountPerPeriod;
-        uint256 lastUpdate;
+        uint256 lastUpdate; // Invariant: lastUpdate <= block.timestamp
     }
     mapping(address => ReceiverBalance) public receiverBalances;
     mapping(uint256 => uint256) public sharesPerPeriod;
@@ -37,17 +37,19 @@ contract Subs is BoringBatchable {
 
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
 
-    constructor(uint _periodDuration, address _token, address _vault, address _feeCollector, uint _divisor, uint _currentPeriod){
+    constructor(uint _periodDuration, address _token, address _vault, address _feeCollector, uint _currentPeriod){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
+        // This can be solved by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
+        // however the extra complexity and risk introduced by this is imo not worth handling the edge case where there are ZERO interactions in >10 years
         require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         token = ERC20(_token);
         vault = IERC4626(_vault);
         feeCollector = _feeCollector;
-        DIVISOR = _divisor;
+        DIVISOR = 10**token.decimals(); // Even if decimals() changes later this will still work fine
         token.approve(_vault, type(uint256).max);
     }
 
