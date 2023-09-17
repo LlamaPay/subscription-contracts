@@ -36,6 +36,7 @@ contract Subs is BoringBatchable {
     mapping(bytes32 => bool) public subs;
 
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
+    event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
@@ -150,6 +151,7 @@ contract Subs is BoringBatchable {
             }
             vault.redeem(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender, address(this));
         }
+        emit Unsubscribe(subId);
     }
 
     function claim(uint256 amount) external {
