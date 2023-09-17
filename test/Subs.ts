@@ -170,7 +170,7 @@ describe("Subs", function () {
     it("receiver earns yield", async function () {
     })
 
-    it("share prices are tracked properly (testing with wild swings)", async function () {
+    it("share prices are tracked properly (test with wild swings)", async function () {
     })
 
     it("balance through months", async function () {
