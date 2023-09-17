@@ -197,11 +197,27 @@ describe("Subs", function () {
     it("share prices are tracked properly (test with wild swings)", async function () {
     })
 
-    it("amount pulled is correct", async function () {
+    it("amount instantly pulled is correct when periodDuration is 5mins", async function () {
+      const periodDuration = 5*60
+      const { daiWhale, subReceiver, token, feeCollector } = await loadFixture(deployFixture);
+      const start = await time.latest()
+      const Subs = await ethers.getContractFactory("Subs");
+      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start);
+      await token.approve(await subs.getAddress(), fe(1e6))
+      for(let i=1; i<20; i++){
+        await time.increaseTo(start + i*periodDuration*2); // restart to beginning of period
+        const increase = Math.round(Math.random()*periodDuration)
+        await time.increase(increase);
+        const prevBal = await token.balanceOf(daiWhale.address)
+        await subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), 0)
+        const postBal = await token.balanceOf(daiWhale.address)
+        expect(prevBal-postBal).to.be.approximately((fe(10)*BigInt(periodDuration-increase))/BigInt(periodDuration), 
+          (fe(10)*5n)/BigInt(periodDuration)) // 5s of leeway
+      }
     })
 
     it("balance through months", async function () {
-      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
+      const { subs, daiWhale, subReceiver, token, vault } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
       const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
       for(let i=0; i<14; i++){

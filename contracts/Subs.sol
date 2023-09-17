@@ -46,6 +46,7 @@ contract Subs is BoringBatchable {
         require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
+        require(currentPeriod <= block.timestamp);
         vault = IERC4626(_vault);
         token = ERC20(vault.asset());
         feeCollector = _feeCollector;
@@ -115,6 +116,7 @@ contract Subs is BoringBatchable {
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
         token.safeTransferFrom(msg.sender, address(this), amount);
+        // If susbcribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
         uint shares = vault.deposit(amount, address(this));
         uint expiration = currentPeriod + periodDuration*cycles;
         receiverAmountToExpire[receiver][expiration] += amountPerCycle;
