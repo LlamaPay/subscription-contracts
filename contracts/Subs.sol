@@ -115,7 +115,7 @@ contract Subs is BoringBatchable {
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
         token.safeTransferFrom(msg.sender, address(this), amount);
-        // If susbcribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
+        // If subscribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
         uint shares = vault.deposit(amount);
         uint expiration = currentPeriod + periodDuration*cycles;
         receiverAmountToExpire[receiver][expiration] += amountPerCycle;
