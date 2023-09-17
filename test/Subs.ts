@@ -4,6 +4,7 @@ import {
 } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import { getSub, unsubscribeParams } from "./helpers"
 
 // CHANGE THESE VARIABLES TO TEST WITH DIFFERENT VAULTS AND TOKENS WITH DIFFERENT DECIMALS
 const mainnet = false
@@ -22,13 +23,7 @@ const fe = (n:number) => ethers.parseUnits(n.toFixed(5), useUSDC?6:18)
 const de = (n:bigint|any) => Number(n)/(useUSDC?1e6:1e18)
 const dd = (n:any) => new Date(Number(n) * 1e3).toISOString().split('T')[0]
 
-async function getSub(call: Promise<any>){
-  return (await (await call).wait())?.logs.find((l:any)=>l.topics[0]==="0x75aabd19e348827dfa0d37beb9ada0c4ccaec489ee6d4f754b579b7722f210bc").args
-}
 
-function unsubscribeParams(sub:any){
-  return [sub.initialPeriod, sub.expirationDate, sub.amountPerCycle, sub.receiver, sub.accumulator, sub.initialShares] as [any, any, any, any, any, any]
-}
 
 async function calculateSubBalance(sub: any, subs: any, currentTimestamp: number, vault: any, DIVISOR: bigint, periodDuration: number) {
   if (sub.expirationDate > currentTimestamp) {
