@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import 'hardhat-deploy';
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -19,7 +20,18 @@ const config: HardhatUserConfig = {
         //blockNumber: 17589468
       }
     },
-  }
+    optimism: {
+      url: "https://rpc.ankr.com/optimism",
+      //accounts: [process.env.PRIVATEKEY!],
+      gasMultiplier: 1.1,
+    },
+  },
+  namedAccounts: {
+    deployer: 0,
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN
+  },
 };
 
 export default config;
