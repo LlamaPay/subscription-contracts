@@ -77,7 +77,7 @@ describe("Subs", function () {
     ], daiWhale)
 
     const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, tokenAddress, vaultAddress, feeCollector.address, await time.latest());
+    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, await time.latest());
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
