@@ -183,6 +183,9 @@ describe("Subs", function () {
     it("unsub after sub has expired", async function () {
     })
 
+    it("cant unsub twice", async function () {
+    })
+
     it("claim correctly discounts expirations", async function () {
     })
 

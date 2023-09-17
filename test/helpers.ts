@@ -1,5 +1,5 @@
-export async function getSub(call: Promise<any>){
-  return (await (await call).wait())?.logs.find((l:any)=>l.topics[0]==="0x75aabd19e348827dfa0d37beb9ada0c4ccaec489ee6d4f754b579b7722f210bc").args
+export async function getSub(call: Promise<any>, topic0="0x75aabd19e348827dfa0d37beb9ada0c4ccaec489ee6d4f754b579b7722f210bc"){
+  return (await (await call).wait())?.logs.find((l:any)=>l.topics[0]===topic0).args
 }
 
 export function unsubscribeParams(sub:any){

@@ -26,4 +26,5 @@ REPORT_GAS=true npm test
 export $(echo $(cat .env | sed 's/#.*//g'| xargs) | envsubst) && npx hardhat deploy --network rinkeby
 export $(echo $(cat .env | sed 's/#.*//g'| xargs) | envsubst) && npx hardhat etherscan-verify --network rinkeby
 export $(echo $(cat .env | sed 's/#.*//g'| xargs) | envsubst) && npx hardhat verify --network rinkeby DEPLOYED_CONTRACT_ADDRESS
+export $(echo $(cat .env | sed 's/#.*//g'| xargs) | envsubst) && npx hardhat run scripts/liveTest.ts
 ```
