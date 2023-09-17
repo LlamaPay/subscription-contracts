@@ -19,7 +19,7 @@ const whaleAddress = mainnet?'0x075e72a5edf65f0a5f44699c7654c1a76941ddc8':
 const tokenYield = useUSDC?0.026:0.0209
 
 const fe = (n:number) => ethers.parseUnits(n.toFixed(5), useUSDC?6:18)
-const de = (n:bigint|any) => Number(n)/1e18
+const de = (n:bigint|any) => Number(n)/(useUSDC?1e6:1e18)
 const dd = (n:any) => new Date(Number(n) * 1e3).toISOString().split('T')[0]
 
 async function getSub(call: Promise<any>){
@@ -55,6 +55,30 @@ async function calculateSubBalance(sub: any, subs: any, currentTimestamp: number
     })
     return vault.convertToAssets(sub.initialShares - ((subsetAccumulator * (sub.amountPerCycle as bigint)) / DIVISOR));
   }
+}
+
+async function calculateAvailableToClaim(receiver: string, subs: any, currentTimestamp: number, vault: any, DIVISOR: bigint, periodDuration: number) {
+  const receiverBalance = await subs.receiverBalances(receiver)
+  const periodBoundary = currentTimestamp - periodDuration
+  let balance = receiverBalance.balance;
+  if(receiverBalance.lastUpdate <= periodBoundary && receiverBalance.lastUpdate != 0n){
+    const periods = []
+    for (let period = receiverBalance.lastUpdate; period <= periodBoundary; period += BigInt(periodDuration)) {
+      periods.push(period)
+    }
+    const [currentSharePrice, periodShares, receiverAmountToExpire] = await Promise.all([
+      vault.convertToShares(DIVISOR),
+      Promise.all(periods.map(p => subs.sharesPerPeriod(p))),
+      Promise.all(periods.map(p => subs.receiverAmountToExpire(receiver, p))),
+    ])
+    let amountPerPeriod = receiverBalance.amountPerPeriod;
+    periodShares.forEach((shares, i) => {
+      const finalShares = shares === 0n ? currentSharePrice : shares;
+      amountPerPeriod -= receiverAmountToExpire[i];
+      balance += BigInt(amountPerPeriod * finalShares) / DIVISOR;
+    })
+  }
+  return balance
 }
 
 describe("Subs", function () {
@@ -173,6 +197,9 @@ describe("Subs", function () {
     it("share prices are tracked properly (test with wild swings)", async function () {
     })
 
+    it("amount pulled is correct", async function () {
+    })
+
     it("balance through months", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
@@ -191,6 +218,27 @@ describe("Subs", function () {
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
       const postBal = await token.balanceOf(daiWhale.address)
       console.log("final", de(postBal - prevBal))
+    })
+
+    it("calculateAvailableToClaim()", async function () {
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
+      const DIVISOR = fe(1)
+      await time.increase(29*24*3600);
+      await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      let expectedClaimable = 0n
+      for(let i=0; i<14; i++){
+        const claimable = await vault.convertToAssets(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, DIVISOR, 30*24*3600))
+        console.log(dd(await time.latest()), de(claimable))
+        expect(claimable).to.be.approximately(expectedClaimable, fe(1))
+        await time.increase(30*24*3600);
+        expectedClaimable += i<7?fe(13):0n
+      }
+      const prevBal = await token.balanceOf(subReceiver.address)
+      await subs.connect(subReceiver).claim(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, DIVISOR, 30*24*3600))
+      const postBal = await token.balanceOf(subReceiver.address)
+      console.log("final", de(postBal - prevBal))
+      expect((await subs.receiverBalances(subReceiver.address)).balance).to.be.eq(0)
+      expect(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, DIVISOR, 30*24*3600)).to.be.eq(0)
     })
 
     it("2 subscribers + refreshApproval", async function () {
