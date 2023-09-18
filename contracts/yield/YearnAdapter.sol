@@ -75,8 +75,7 @@ contract YearnAdapter is Owned {
     }
 
     function redeem(uint256 shares, address receiver) internal {
-        uint assets = convertToAssets(shares);
-        uint yearnShares = assets.mulDivDown(DIVISOR,vault.pricePerShare());
+        uint yearnShares = (shares * stakingRewards.balanceOf(address(this))) / totalSupply;
         stakingRewards.withdraw(yearnShares);
         vault.withdraw(yearnShares, receiver);
     }
