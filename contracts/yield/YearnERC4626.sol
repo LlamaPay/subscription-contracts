@@ -77,4 +77,24 @@ contract YearnERC4626 is ERC4626 {
     function totalAssets() public view virtual override returns (uint256) {
         return stakingRewards.balanceOf(address(this)) * vault.pricePerShare();
     }
+
+    function redeem(uint256 shares, address receiver, address owner) public virtual override returns (uint256 assets) {
+        if (msg.sender != owner) {
+            uint256 allowed = allowance[owner][msg.sender]; // Saves gas for limited approvals.
+
+            if (allowed != type(uint256).max) {
+                allowance[owner][msg.sender] = allowed - shares;
+            }
+        }
+
+        // Check for rounding error since we round down in previewRedeem.
+        require((assets = previewRedeem(shares)) != 0, "ZERO_ASSETS");
+
+        _burn(owner, shares);
+
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+
+        stakingRewards.withdraw((assets*MULTIPLIER)/vault.pricePerShare());
+        vault.withdraw(assets, receiver);
+    }
 }
