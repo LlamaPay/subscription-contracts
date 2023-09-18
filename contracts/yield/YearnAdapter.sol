@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {Owned} from "solmate/src/auth/Owned.sol";
 
 interface Yearn {
     function pricePerShare() external view returns (uint256);
@@ -23,13 +24,13 @@ interface StakingRewards {
     function balanceOf(address owner) external view returns (uint256);
 }
 
-contract YearnAdapter {
+contract YearnAdapter is Owned {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
     ERC20 public immutable asset;
     Yearn public immutable vault;
-    address public immutable rewardRecipient;
+    address public rewardRecipient;
     StakingRewards public immutable stakingRewards;
     ERC20 public immutable rewardsToken;
     uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
@@ -39,7 +40,7 @@ contract YearnAdapter {
         address vault_,
         address rewardRecipient_,
         address stakingRewards_
-    ){
+    ) Owned(msg.sender) {
         vault = Yearn(vault_);
         asset = ERC20(vault.token());
         rewardRecipient = rewardRecipient_;
@@ -54,21 +55,22 @@ contract YearnAdapter {
         stakingRewards.getReward();
     }
 
+    // If the rewards are donated back to the vault, this mechanism is vulnerable to an attack where someone joins the pool, rewards are distributed, and then he leaves
+    // this would allow that attacker to steal a part of the yield from everyone else
+    // We solve this by donating to the pool at random times and keeping the txs private so its impossible to predict when a donation will happen and deposit right before
     function sendRewards(uint amount) external {
         rewardsToken.transfer(rewardRecipient, amount);
     }
 
+    function setRewardRecipient(address _rewardRecipient) external onlyOwner() {
+        rewardRecipient = _rewardRecipient;
+    }
+
     function deposit(uint256 assets) internal returns (uint) {
-        uint ourShares;
-        if(totalSupply == 0){
-            totalSupply = assets;
-            ourShares = assets;
-        } else {
-            ourShares = (assets*totalSupply)/totalAssets();
-            totalSupply += ourShares;
-        }
+        uint ourShares = convertToShares(assets);
+        totalSupply += ourShares;
         uint shares = vault.deposit(assets);
-        stakingRewards.stake(shares);
+        stakingRewards.stake(shares); // this can revert if contract is sunset, but if it does its not a huge deal because users can still withdraw
         return ourShares;
     }
 
