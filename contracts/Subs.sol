@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {BoringBatchable} from "./fork/BoringBatchable.sol";
+import {YearnAdapter} from "./yield/YearnAdapter.sol";
 
 interface IERC4626 {
     function convertToShares(uint256 assets) external view returns (uint256);
@@ -15,12 +16,10 @@ interface IERC4626 {
     function asset() external view returns (address);
 }
 
-contract Subs is BoringBatchable {
+contract Subs is BoringBatchable, YearnAdapter {
     using SafeTransferLib for ERC20;
 
     uint public immutable periodDuration;
-    ERC20 public immutable token;
-    IERC4626 public immutable vault;
     address public immutable feeCollector;
     uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
     uint public currentPeriod; // Invariant: currentPeriod <= block.timestamp
@@ -38,7 +37,8 @@ contract Subs is BoringBatchable {
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
     event Unsubscribe(bytes32 subId);
 
-    constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod){
+    constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
+        address stakingRewards_) YearnAdapter(_vault, rewardRecipient_, stakingRewards_){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
@@ -48,21 +48,13 @@ contract Subs is BoringBatchable {
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         require(currentPeriod <= block.timestamp);
-        vault = IERC4626(_vault);
-        token = ERC20(vault.asset());
         feeCollector = _feeCollector;
-        DIVISOR = 10**token.decimals(); // Even if decimals() changes later this will still work fine
-        token.approve(_vault, type(uint256).max);
-    }
-
-    function refreshApproval() external {
-        token.approve(address(vault), 0);
-        token.approve(address(vault), type(uint256).max);
+        DIVISOR = 10**asset.decimals(); // Even if decimals() changes later this will still work fine
     }
 
     function _updateGlobal() private {
         if(block.timestamp > currentPeriod + periodDuration){
-            uint shares = vault.convertToShares(DIVISOR);
+            uint shares = convertToShares(DIVISOR);
             sharesAccumulator += ((block.timestamp - currentPeriod)/periodDuration)*shares; // Loss of precision here is a wanted effect
             do {
                 sharesPerPeriod[currentPeriod] = shares;
@@ -116,9 +108,9 @@ contract Subs is BoringBatchable {
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
-        token.safeTransferFrom(msg.sender, address(this), amount);
+        asset.safeTransferFrom(msg.sender, address(this), amount);
         // If subscribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
-        uint shares = vault.deposit(amount, address(this));
+        uint shares = deposit(amount);
         uint expiration = currentPeriod + periodDuration*cycles;
         receiverAmountToExpire[receiver][expiration] += amountPerCycle;
         receiverBalances[receiver].amountPerPeriod += amountPerCycle;
@@ -139,7 +131,7 @@ contract Subs is BoringBatchable {
             // Most common case, solved in O(1)
             uint sharesPaid = ((sharesAccumulator - accumulator) * amountPerCycle) / DIVISOR;
             uint sharesLeft = initialShares - sharesPaid;
-            vault.redeem(sharesLeft, msg.sender, address(this));
+            redeem(sharesLeft, msg.sender);
             receiverAmountToExpire[receiver][expirationDate] -= amountPerCycle;
             receiverAmountToExpire[receiver][currentPeriod] += amountPerCycle;
         } else {
@@ -149,7 +141,7 @@ contract Subs is BoringBatchable {
                 subsetAccumulator += sharesPerPeriod[initialPeriod];
                 initialPeriod += periodDuration;
             }
-            vault.redeem(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender, address(this));
+            redeem(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender);
         }
         emit Unsubscribe(subId);
     }
@@ -157,7 +149,7 @@ contract Subs is BoringBatchable {
     function claim(uint256 amount) external {
         _updateReceiver(msg.sender);
         receiverBalances[msg.sender].balance -= amount;
-        vault.redeem((amount * 99) / 100, msg.sender, address(this));
-        vault.transfer(feeCollector, amount / 100);
+        redeem((amount * 99) / 100, msg.sender);
+        receiverBalances[feeCollector].balance += amount / 100;
     }
 }

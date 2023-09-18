@@ -1,8 +1,8 @@
 pragma solidity ^0.8.19;
 
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {ERC4626} from "solmate/src/mixins/ERC4626.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 interface Yearn {
     function pricePerShare() external view returns (uint256);
@@ -23,34 +23,31 @@ interface StakingRewards {
     function balanceOf(address owner) external view returns (uint256);
 }
 
-contract YearnERC4626 is ERC4626 {
+contract YearnAdapter {
     using SafeTransferLib for ERC20;
+    using FixedPointMathLib for uint256;
 
+    ERC20 public immutable asset;
     Yearn public immutable vault;
     address public immutable rewardRecipient;
     StakingRewards public immutable stakingRewards;
     ERC20 public immutable rewardsToken;
     uint public immutable MULTIPLIER;
+    uint public totalSupply;
 
     constructor(
-        ERC20 asset_,
-        Yearn vault_,
+        address vault_,
         address rewardRecipient_,
-        StakingRewards stakingRewards_
-    ) ERC4626(asset_, _vaultName(asset_), _vaultSymbol(asset_)) {
-        vault = vault_;
+        address stakingRewards_
+    ){
+        vault = Yearn(vault_);
+        asset = ERC20(vault.token());
         rewardRecipient = rewardRecipient_;
-        stakingRewards = stakingRewards_;
+        stakingRewards = StakingRewards(stakingRewards_);
         rewardsToken = ERC20(stakingRewards.rewardsToken());
         MULTIPLIER = 10**asset.decimals();
-    }
-
-    function _vaultName(ERC20 asset_) internal view virtual returns (string memory vaultName) {
-        vaultName = string.concat("ERC4626-Wrapped Yearn ", asset_.symbol());
-    }
-
-    function _vaultSymbol(ERC20 asset_) internal view virtual returns (string memory vaultSymbol) {
-        vaultSymbol = string.concat("y", asset_.symbol());
+        asset.approve(vault_, type(uint256).max);
+        vault.approve(address(stakingRewards), type(uint256).max);
     }
 
     function claimRewards() external {
@@ -61,39 +58,46 @@ contract YearnERC4626 is ERC4626 {
         rewardsToken.transfer(rewardRecipient, amount);
     }
 
-    function afterDeposit(uint256 assets, uint256 /*shares*/ ) internal virtual override {
-        asset.safeApprove(address(vault), assets);
+    function deposit(uint256 assets) internal returns (uint) {
+        uint ourShares;
+        if(totalSupply == 0){
+            totalSupply = assets;
+            ourShares = assets;
+        } else {
+            ourShares = (assets*totalSupply)/totalAssets();
+            totalSupply += ourShares;
+        }
         uint shares = vault.deposit(assets);
-        vault.approve(address(stakingRewards), shares);
         stakingRewards.stake(shares);
+        return ourShares;
     }
 
-    function beforeWithdraw(uint256 assets, uint256 /*shares*/ ) internal virtual override {
+    function redeem(uint256 shares, address receiver) internal {
+        uint assets = convertToAssets(shares);
         stakingRewards.withdraw((assets*MULTIPLIER)/vault.pricePerShare());
-        vault.withdraw(assets, address(this));
+        vault.withdraw(assets, receiver);
     }
 
-    function totalAssets() public view virtual override returns (uint256) {
+    function totalAssets() public view returns (uint256) {
         return stakingRewards.balanceOf(address(this)) * vault.pricePerShare();
     }
 
-    function redeem(uint256 shares, address receiver, address owner) public virtual override returns (uint256 assets) {
-        if (msg.sender != owner) {
-            uint256 allowed = allowance[owner][msg.sender]; // Saves gas for limited approvals.
+    function convertToShares(uint256 assets) public view returns (uint256) {
+        uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
 
-            if (allowed != type(uint256).max) {
-                allowance[owner][msg.sender] = allowed - shares;
-            }
-        }
+        return supply == 0 ? assets : assets.mulDivDown(supply, totalAssets());
+    }
 
-        // Check for rounding error since we round down in previewRedeem.
-        require((assets = previewRedeem(shares)) != 0, "ZERO_ASSETS");
+    function convertToAssets(uint256 shares) public view returns (uint256) {
+        uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
 
-        _burn(owner, shares);
+        return supply == 0 ? shares : shares.mulDivDown(totalAssets(), supply);
+    }
 
-        emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        stakingRewards.withdraw((assets*MULTIPLIER)/vault.pricePerShare());
-        vault.withdraw(assets, receiver);
+    function refreshApproval() external {
+        asset.approve(address(vault), 0);
+        asset.approve(address(vault), type(uint256).max);
+        vault.approve(address(stakingRewards), 0);
+        vault.approve(address(stakingRewards), type(uint256).max);
     }
 }

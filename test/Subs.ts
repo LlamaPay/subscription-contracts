@@ -8,16 +8,17 @@ import { getSub, unsubscribeParams } from "./helpers"
 
 // CHANGE THESE VARIABLES TO TEST WITH DIFFERENT VAULTS AND TOKENS WITH DIFFERENT DECIMALS
 const mainnet = false
-const useUSDC = true // Requires mainnet === false
+const useUSDC = false // Requires mainnet === false
 
 
 const tokenAddress = mainnet?'0x6B175474E89094C44Da98b954EedeAC495271d0F':
   useUSDC?'0x7f5c764cbc14f9669b88837ca1490cca17c31607':'0xda10009cbd5d07dd0cecc66161fc93d7c9000da1'
 const vaultAddress = mainnet?'0x83F20F44975D03b1b09e64809B757c47f942BEeA':
-  useUSDC?'0x6E6699E4B8eE4Bf35E72a41fe366116ff4C5A3dF':'0x85c6Cd5fC71AF35e6941d7b53564AC0A68E09f5C' // sDAI : 4626 aDAI
+  useUSDC?'0x6E6699E4B8eE4Bf35E72a41fe366116ff4C5A3dF':'0x65343F414FFD6c97b0f6add33d16F6845Ac22BAc' // sDAI : yearn DAI
 const whaleAddress = mainnet?'0x075e72a5edf65f0a5f44699c7654c1a76941ddc8':
   useUSDC?'0x7f5c764cbc14f9669b88837ca1490cca17c31607':'0x9cd4ff80d81e4dda8e9d637887a5db7e0c8e007b'
 const tokenYield = useUSDC?0.026:0.0209
+const stakingRewards = "0xf8126ef025651e1b313a6893fcf4034f4f4bd2aa"
 
 const fe = (n:number) => ethers.parseUnits(n.toFixed(5), useUSDC?6:18)
 const de = (n:bigint|any) => Number(n)/(useUSDC?1e6:1e18)
@@ -89,14 +90,15 @@ describe("Subs", function () {
         "function approve(address spender, uint256 amount) external returns (bool)",
         "function transfer(address spender, uint256 amount) external returns (bool)"
     ], daiWhale)
-    const vault = new ethers.Contract(vaultAddress,[
-      "function balanceOf(address account) external view returns (uint256)",
+
+    const Subs = await ethers.getContractFactory("Subs");
+    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, await time.latest(), feeCollector.address, stakingRewards);
+
+    const vault = new ethers.Contract(await subs.getAddress(),[
+      //"function balanceOf(address account) external view returns (uint256)",
       "function convertToAssets(uint256 shares) external view returns (uint256)",
       "function convertToShares(uint256 assets) external view returns (uint256)"
     ], daiWhale)
-
-    const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, await time.latest());
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
@@ -200,7 +202,7 @@ describe("Subs", function () {
       const { daiWhale, subReceiver, token, feeCollector } = await loadFixture(deployFixture);
       const start = await time.latest()
       const Subs = await ethers.getContractFactory("Subs");
-      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start);
+      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards);
       await token.approve(await subs.getAddress(), fe(1e6))
       for(let i=1; i<20; i++){
         await time.increaseTo(start + i*periodDuration*2); // restart to beginning of period
