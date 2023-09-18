@@ -32,7 +32,7 @@ contract YearnAdapter {
     address public immutable rewardRecipient;
     StakingRewards public immutable stakingRewards;
     ERC20 public immutable rewardsToken;
-    uint public immutable MULTIPLIER;
+    uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
     uint public totalSupply;
 
     constructor(
@@ -45,7 +45,7 @@ contract YearnAdapter {
         rewardRecipient = rewardRecipient_;
         stakingRewards = StakingRewards(stakingRewards_);
         rewardsToken = ERC20(stakingRewards.rewardsToken());
-        MULTIPLIER = 10**asset.decimals();
+        DIVISOR = 10**asset.decimals(); // Even if decimals() changes later this will still work fine
         asset.approve(vault_, type(uint256).max);
         vault.approve(address(stakingRewards), type(uint256).max);
     }
@@ -74,12 +74,13 @@ contract YearnAdapter {
 
     function redeem(uint256 shares, address receiver) internal {
         uint assets = convertToAssets(shares);
-        stakingRewards.withdraw((assets*MULTIPLIER)/vault.pricePerShare());
-        vault.withdraw(assets, receiver);
+        uint yearnShares = assets.mulDivDown(DIVISOR,vault.pricePerShare());
+        stakingRewards.withdraw(yearnShares);
+        vault.withdraw(yearnShares, receiver);
     }
 
     function totalAssets() public view returns (uint256) {
-        return stakingRewards.balanceOf(address(this)) * vault.pricePerShare();
+        return (stakingRewards.balanceOf(address(this)) * vault.pricePerShare())/DIVISOR;
     }
 
     function convertToShares(uint256 assets) public view returns (uint256) {

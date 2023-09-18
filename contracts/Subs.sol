@@ -21,7 +21,6 @@ contract Subs is BoringBatchable, YearnAdapter {
 
     uint public immutable periodDuration;
     address public immutable feeCollector;
-    uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
     uint public currentPeriod; // Invariant: currentPeriod <= block.timestamp
     uint public sharesAccumulator;
     mapping(address => mapping(uint256 => uint256)) public receiverAmountToExpire;
@@ -49,7 +48,6 @@ contract Subs is BoringBatchable, YearnAdapter {
         currentPeriod = _currentPeriod;
         require(currentPeriod <= block.timestamp);
         feeCollector = _feeCollector;
-        DIVISOR = 10**asset.decimals(); // Even if decimals() changes later this will still work fine
     }
 
     function _updateGlobal() private {

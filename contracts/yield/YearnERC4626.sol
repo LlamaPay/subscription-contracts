@@ -69,12 +69,13 @@ contract YearnERC4626 is ERC4626 {
     }
 
     function beforeWithdraw(uint256 assets, uint256 /*shares*/ ) internal virtual override {
-        stakingRewards.withdraw((assets*MULTIPLIER)/vault.pricePerShare());
-        vault.withdraw(assets, address(this));
+        uint yearnShares = (assets*MULTIPLIER)/vault.pricePerShare();
+        stakingRewards.withdraw(yearnShares);
+        vault.withdraw(yearnShares, address(this));
     }
 
     function totalAssets() public view virtual override returns (uint256) {
-        return stakingRewards.balanceOf(address(this)) * vault.pricePerShare();
+        return (stakingRewards.balanceOf(address(this)) * vault.pricePerShare()) / MULTIPLIER;
     }
 
     function redeem(uint256 shares, address receiver, address owner) public virtual override returns (uint256 assets) {
@@ -93,7 +94,9 @@ contract YearnERC4626 is ERC4626 {
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
 
-        stakingRewards.withdraw((assets*MULTIPLIER)/vault.pricePerShare());
-        vault.withdraw(assets, receiver);
+        uint yearnShares = (assets*MULTIPLIER)/vault.pricePerShare();
+        stakingRewards.withdraw(yearnShares);
+        vault.withdraw(yearnShares, address(this));
+        vault.withdraw(yearnShares, receiver);
     }
 }
