@@ -4,13 +4,15 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {BoringBatchable} from "./fork/BoringBatchable.sol";
 
-interface Yearn {
-    function pricePerShare() external view returns (uint256);
-    function deposit(uint256 assets) external returns (uint256 shares);
-    function withdraw(uint256 assets, address receiver) external returns (uint256 shares);
+interface IERC4626 {
+    function convertToShares(uint256 assets) external view returns (uint256);
+    function convertToAssets(uint256 shares) external view returns (uint256);
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
+    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
     function balanceOf(address owner) external view returns (uint256);
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
     function transfer(address to, uint256 value) external returns (bool);
-    function token() external view returns (address);
+    function asset() external view returns (address);
 }
 
 contract Subs is BoringBatchable {
@@ -18,7 +20,7 @@ contract Subs is BoringBatchable {
 
     uint public immutable periodDuration;
     ERC20 public immutable token;
-    Yearn public immutable vault;
+    IERC4626 public immutable vault;
     address public immutable feeCollector;
     uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
     uint public currentPeriod; // Invariant: currentPeriod <= block.timestamp
@@ -42,12 +44,12 @@ contract Subs is BoringBatchable {
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
         // This can be solved by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
         // however the extra complexity and risk introduced by this is imo not worth handling the edge case where there are ZERO interactions in >10 years
-        //require(_periodDuration >= 7 days, "periodDuration too smol");
+        require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         require(currentPeriod <= block.timestamp);
-        vault = Yearn(_vault);
-        token = ERC20(vault.token());
+        vault = IERC4626(_vault);
+        token = ERC20(vault.asset());
         feeCollector = _feeCollector;
         DIVISOR = 10**token.decimals(); // Even if decimals() changes later this will still work fine
         token.approve(_vault, type(uint256).max);
@@ -60,7 +62,7 @@ contract Subs is BoringBatchable {
 
     function _updateGlobal() private {
         if(block.timestamp > currentPeriod + periodDuration){
-            uint shares = (DIVISOR*DIVISOR)/vault.pricePerShare();
+            uint shares = vault.convertToShares(DIVISOR);
             sharesAccumulator += ((block.timestamp - currentPeriod)/periodDuration)*shares; // Loss of precision here is a wanted effect
             do {
                 sharesPerPeriod[currentPeriod] = shares;
@@ -116,7 +118,7 @@ contract Subs is BoringBatchable {
         uint amount = amountForFuture + claimableThisPeriod;
         token.safeTransferFrom(msg.sender, address(this), amount);
         // If subscribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
-        uint shares = vault.deposit(amount);
+        uint shares = vault.deposit(amount, address(this));
         uint expiration = currentPeriod + periodDuration*cycles;
         receiverAmountToExpire[receiver][expiration] += amountPerCycle;
         receiverBalances[receiver].amountPerPeriod += amountPerCycle;
@@ -137,7 +139,7 @@ contract Subs is BoringBatchable {
             // Most common case, solved in O(1)
             uint sharesPaid = ((sharesAccumulator - accumulator) * amountPerCycle) / DIVISOR;
             uint sharesLeft = initialShares - sharesPaid;
-            vault.withdraw(sharesLeft, msg.sender);
+            vault.redeem(sharesLeft, msg.sender, address(this));
             receiverAmountToExpire[receiver][expirationDate] -= amountPerCycle;
             receiverAmountToExpire[receiver][currentPeriod] += amountPerCycle;
         } else {
@@ -147,7 +149,7 @@ contract Subs is BoringBatchable {
                 subsetAccumulator += sharesPerPeriod[initialPeriod];
                 initialPeriod += periodDuration;
             }
-            vault.withdraw(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender);
+            vault.redeem(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender, address(this));
         }
         emit Unsubscribe(subId);
     }
@@ -155,7 +157,7 @@ contract Subs is BoringBatchable {
     function claim(uint256 amount) external {
         _updateReceiver(msg.sender);
         receiverBalances[msg.sender].balance -= amount;
-        vault.withdraw((amount * 99) / 100, msg.sender);
+        vault.redeem((amount * 99) / 100, msg.sender, address(this));
         vault.transfer(feeCollector, amount / 100);
     }
 }
