@@ -5,17 +5,6 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {BoringBatchable} from "./fork/BoringBatchable.sol";
 import {YearnAdapter} from "./yield/YearnAdapter.sol";
 
-interface IERC4626 {
-    function convertToShares(uint256 assets) external view returns (uint256);
-    function convertToAssets(uint256 shares) external view returns (uint256);
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
-    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
-    function balanceOf(address owner) external view returns (uint256);
-    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
-    function transfer(address to, uint256 value) external returns (bool);
-    function asset() external view returns (address);
-}
-
 contract Subs is BoringBatchable, YearnAdapter {
     using SafeTransferLib for ERC20;
 
