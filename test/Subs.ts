@@ -92,7 +92,7 @@ describe("Subs", function () {
     ], daiWhale)
 
     const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, await time.latest(), feeCollector.address, stakingRewards);
+    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, await time.latest(), feeCollector.address, stakingRewards, fe(17));
 
     const vault = new ethers.Contract(await subs.getAddress(),[
       //"function balanceOf(address account) external view returns (uint256)",
@@ -202,7 +202,7 @@ describe("Subs", function () {
       const { daiWhale, subReceiver, token, feeCollector } = await loadFixture(deployFixture);
       const start = await time.latest()
       const Subs = await ethers.getContractFactory("Subs");
-      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards);
+      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards, fe(50));
       await token.approve(await subs.getAddress(), fe(1e6))
       for(let i=1; i<20; i++){
         await time.increaseTo(start + i*periodDuration*2); // restart to beginning of period
