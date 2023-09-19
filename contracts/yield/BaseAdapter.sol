@@ -34,7 +34,11 @@ abstract contract BaseAdapter is Owned {
         minBalanceToTriggerDeposit = _minBalanceToTriggerDeposit;
     }
 
-    // Can be triggered anyway by making a deposit higher than minBalanceToTriggerDeposit
+    // Why is this not caller-restricted?
+    // - forceDeposit() can be triggered anyway by making a deposit that increases balance enough, and then withdrawing it
+    // - redeem() doesn't support withdrawing money from both asset and vault, so in the case where the last user wants to withdraw
+    //    and only 50% of money is in the vault, owner could increase minBalanceToTriggerDeposit to max to prevent new vault deposits
+    //    and prevent the user from getting the money, asking for a ransom. With this method user can simply call this to solve the situation
     function triggerDeposit() external {
         forceDeposit(asset.balanceOf(address(this)));
     }
