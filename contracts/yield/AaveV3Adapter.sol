@@ -38,6 +38,7 @@ contract AaveV3Adapter is BaseAdapter {
     // this would allow that attacker to steal a part of the yield from everyone else
     // We solve this by donating to the pool at random times and keeping the txs private so its impossible to predict when a donation will happen and deposit right before
     function claimRewards() external {
+        require(msg.sender == rewardRecipient, "not rewardRecipient");
         address[] memory assets = new address[](1);
         assets[0] = address(aToken);
         rewardsController.claimAllRewards(assets, rewardRecipient);

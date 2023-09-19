@@ -4,9 +4,11 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {BoringBatchable} from "./fork/BoringBatchable.sol";
 import {YearnAdapter} from "./yield/YearnAdapter.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 contract Subs is BoringBatchable, YearnAdapter {
     using SafeTransferLib for ERC20;
+    using FixedPointMathLib for uint256;
 
     uint public immutable periodDuration;
     address public immutable feeCollector;
@@ -26,7 +28,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
-        address stakingRewards_) YearnAdapter(_vault, rewardRecipient_, stakingRewards_){
+        address stakingRewards_, uint minBalanceToTriggerDeposit_) YearnAdapter(_vault, rewardRecipient_, stakingRewards_, minBalanceToTriggerDeposit_){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
@@ -90,8 +92,9 @@ contract Subs is BoringBatchable, YearnAdapter {
 
     function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
         _updateReceiver(receiver);
-        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal()
-        // so (currentPeriod + periodDuration - block.timestamp) will never underflow
+        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod <= block.timestamp
+        // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
+        // thus this will never underflow and claimableThisPeriod <= amountPerCycle
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
@@ -99,6 +102,9 @@ contract Subs is BoringBatchable, YearnAdapter {
         // If subscribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
         uint shares = deposit(amount);
         uint expiration = currentPeriod + periodDuration*cycles;
+        // Setting receiverAmountToExpire here makes the implicit assumption than all calls to convertToShares(DIVISOR) within _updateGlobal() in the future will return a lower number than the one returned right now,
+        // in other words, that the underlying vault will never lose money and its pricePerShare() will not go down
+        // If vault were to lose money, contract will keep working, but it will have bad debt, so the last users to withdraw won't be able to
         receiverAmountToExpire[receiver][expiration] += amountPerCycle;
         receiverBalances[receiver].amountPerPeriod += amountPerCycle;
         receiverBalances[receiver].balance += (shares * claimableThisPeriod) / amount;
@@ -116,7 +122,9 @@ contract Subs is BoringBatchable, YearnAdapter {
         delete subs[subId];
         if(expirationDate > block.timestamp){
             // Most common case, solved in O(1)
-            uint sharesPaid = ((sharesAccumulator - accumulator) * amountPerCycle) / DIVISOR;
+            uint sharesPaid = (sharesAccumulator - accumulator).mulDivUp(amountPerCycle, DIVISOR);
+            // sharesLeft can underflow if either share price goes down or because of rounding
+            // however that's fine because in those cases there's nothing left to withdraw
             uint sharesLeft = initialShares - sharesPaid;
             redeem(sharesLeft, msg.sender);
             receiverAmountToExpire[receiver][expirationDate] -= amountPerCycle;
@@ -128,7 +136,7 @@ contract Subs is BoringBatchable, YearnAdapter {
                 subsetAccumulator += sharesPerPeriod[initialPeriod];
                 initialPeriod += periodDuration;
             }
-            redeem(initialShares - ((subsetAccumulator * amountPerCycle) / DIVISOR), msg.sender);
+            redeem(initialShares - subsetAccumulator.mulDivUp(amountPerCycle, DIVISOR), msg.sender);
         }
         emit Unsubscribe(subId);
     }

@@ -43,6 +43,7 @@ contract YearnAdapter is BaseAdapter {
     }
 
     function claimRewards() external {
+        require(msg.sender == rewardRecipient, "not rewardRecipient");
         stakingRewards.getReward();
     }
 
@@ -50,6 +51,7 @@ contract YearnAdapter is BaseAdapter {
     // this would allow that attacker to steal a part of the yield from everyone else
     // We solve this by donating to the pool at random times and keeping the txs private so its impossible to predict when a donation will happen and deposit right before
     function sendRewards(uint amount) external {
+        require(msg.sender == rewardRecipient, "not rewardRecipient");
         rewardsToken.transfer(rewardRecipient, amount);
     }
 
@@ -59,7 +61,7 @@ contract YearnAdapter is BaseAdapter {
     }
 
     function forceRedeem(uint assets, address receiver) internal override {
-        uint yearnShares = (assets * DIVISOR) / vault.pricePerShare(); // TODO: reduce 1 call to pricePerShare()
+        uint yearnShares = (assets * DIVISOR) / vault.pricePerShare(); // Possible optimization: reduce 1 call to pricePerShare(), not applying it to keep code simple
         stakingRewards.withdraw(yearnShares);
         vault.withdraw(yearnShares, receiver);
     }
