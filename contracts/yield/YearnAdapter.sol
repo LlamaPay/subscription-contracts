@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
-import {Owned} from "solmate/src/auth/Owned.sol";
+import {BaseAdapter} from "./BaseAdapter.sol";
 
 interface Yearn {
     function pricePerShare() external view returns (uint256);
@@ -24,30 +24,20 @@ interface StakingRewards {
     function balanceOf(address owner) external view returns (uint256);
 }
 
-contract YearnAdapter is Owned {
-    using SafeTransferLib for ERC20;
-    using FixedPointMathLib for uint256;
-
-    ERC20 public immutable asset;
+contract YearnAdapter is BaseAdapter {
     Yearn public immutable vault;
-    address public rewardRecipient;
     StakingRewards public immutable stakingRewards;
     ERC20 public immutable rewardsToken;
-    uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
-    uint public totalSupply;
-    uint public minBalanceToTriggerDeposit;
 
     constructor(
         address vault_,
         address rewardRecipient_,
-        address stakingRewards_
-    ) Owned(msg.sender) {
+        address stakingRewards_,
+        uint minBalanceToTriggerDeposit_
+    ) BaseAdapter(Yearn(vault_).token(), rewardRecipient_, minBalanceToTriggerDeposit_) {
         vault = Yearn(vault_);
-        asset = ERC20(vault.token());
-        rewardRecipient = rewardRecipient_;
         stakingRewards = StakingRewards(stakingRewards_);
         rewardsToken = ERC20(stakingRewards.rewardsToken());
-        DIVISOR = 10**asset.decimals(); // Even if decimals() changes later this will still work fine
         asset.approve(vault_, type(uint256).max);
         vault.approve(address(stakingRewards), type(uint256).max);
     }
@@ -63,63 +53,22 @@ contract YearnAdapter is Owned {
         rewardsToken.transfer(rewardRecipient, amount);
     }
 
-    function setRewardRecipient(address _rewardRecipient) external onlyOwner() {
-        rewardRecipient = _rewardRecipient;
-    }
-
-    function setMinBalanceToTriggerDeposit(uint _minBalanceToTriggerDeposit) external onlyOwner() {
-        minBalanceToTriggerDeposit = _minBalanceToTriggerDeposit;
-    }
-
-    // Can be triggered anyway by making a deposit higher than minBalanceToTriggerDeposit
-    function triggerDeposit() external {
-        forceDeposit(asset.balanceOf(address(this)));
-    }
-
-    function forceDeposit(uint assets) internal {
+    function forceDeposit(uint assets) internal override {
         uint shares = vault.deposit(assets);
         stakingRewards.stake(shares); // this can revert if contract is sunset, but if it does its not a huge deal because users can still withdraw
     }
 
-    function deposit(uint256 assets) internal returns (uint) {
-        uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
-        totalSupply += ourShares;
-        uint assetBalance = asset.balanceOf(address(this));
-        if(assetBalance > minBalanceToTriggerDeposit){
-            forceDeposit(assetBalance);
-        }
-        return ourShares;
+    function forceRedeem(uint assets, address receiver) internal override {
+        uint yearnShares = (assets * DIVISOR) / vault.pricePerShare(); // TODO: reduce 1 call to pricePerShare()
+        stakingRewards.withdraw(yearnShares);
+        vault.withdraw(yearnShares, receiver);
     }
 
-    function redeem(uint256 shares, address receiver) internal {
-        uint assets = convertToAssets(shares);
-        totalSupply -= shares;
-        if(assets <= asset.balanceOf(address(this))){
-            asset.safeTransfer(receiver, assets);
-        } else {
-            uint yearnShares = (assets * DIVISOR) / vault.pricePerShare();
-            stakingRewards.withdraw(yearnShares);
-            vault.withdraw(yearnShares, receiver);
-        }
-    }
-
-    function totalAssets() public view returns (uint256) {
+    function totalAssets() public view override returns (uint256) {
         return (stakingRewards.balanceOf(address(this)) * vault.pricePerShare())/DIVISOR + asset.balanceOf(address(this));
     }
 
-    function convertToShares(uint256 assets) public view returns (uint256) {
-        uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
-
-        return supply == 0 ? assets : assets.mulDivDown(supply, totalAssets());
-    }
-
-    function convertToAssets(uint256 shares) public view returns (uint256) {
-        uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
-
-        return supply == 0 ? shares : shares.mulDivDown(totalAssets(), supply);
-    }
-
-    function refreshApproval() external {
+    function refreshApproval() external override {
         asset.approve(address(vault), 0);
         asset.approve(address(vault), type(uint256).max);
         vault.approve(address(stakingRewards), 0);
