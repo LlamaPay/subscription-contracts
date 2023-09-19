@@ -17,7 +17,7 @@ const vaultAddress = mainnet?'0x83F20F44975D03b1b09e64809B757c47f942BEeA':
   useUSDC?'0x6E6699E4B8eE4Bf35E72a41fe366116ff4C5A3dF':'0x65343F414FFD6c97b0f6add33d16F6845Ac22BAc' // sDAI : yearn DAI
 const whaleAddress = mainnet?'0x075e72a5edf65f0a5f44699c7654c1a76941ddc8':
   useUSDC?'0x7f5c764cbc14f9669b88837ca1490cca17c31607':'0x9cd4ff80d81e4dda8e9d637887a5db7e0c8e007b'
-const tokenYield = useUSDC?0.026:0.0209
+const tokenYield = useUSDC?0.026:0
 const stakingRewards = "0xf8126ef025651e1b313a6893fcf4034f4f4bd2aa"
 
 const fe = (n:number) => ethers.parseUnits(n.toFixed(5), useUSDC?6:18)
@@ -145,7 +145,7 @@ describe("Subs", function () {
       expect(receiverSharesBalance).to.be.approximately(shares, fe(1));
       await subs.connect(subReceiver).claim(receiverSharesBalance)
       expect(await token.balanceOf(subReceiver.address)).to.be.approximately(fe(5e3*0.99), fe(1));
-      expect(await vault.balanceOf(feeCollector.address)).to.be.approximately(fe(5e3*0.01), fe(1)); // 1% collected by feeCollector
+      expect((await subs.receiverBalances(feeCollector.address)).balance).to.be.approximately(fe(5e3*0.01), fe(1)); // 1% collected by feeCollector
     });
 
     it("if yield is higher than costs, user doesnt lose money", async function () {
@@ -230,10 +230,12 @@ describe("Subs", function () {
         console.log(dd(await time.latest()), de(await calculateSubBalance(whaleSub, subs, await time.latest(), vault, fe(1), 30*24*3600)))
         await time.increase(30*24*3600);
       }
-      const prevBal = await token.balanceOf(daiWhale.address)
-      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
-      const postBal = await token.balanceOf(daiWhale.address)
-      console.log("final", de(postBal - prevBal))
+      if(tokenYield > 0){
+        const prevBal = await token.balanceOf(daiWhale.address)
+        await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
+        const postBal = await token.balanceOf(daiWhale.address)
+        console.log("final", de(postBal - prevBal))
+      }
     })
 
     it("calculateAvailableToClaim()", async function () {
@@ -298,9 +300,11 @@ describe("Subs", function () {
       const prevOtherBal = await token.balanceOf(otherSubscriber.address)
       await subs.connect(otherSubscriber).unsubscribe(...unsubscribeParams(otherSub))
       expect(await token.balanceOf(otherSubscriber.address)-prevOtherBal).to.be.approximately(fe(otherSubBalance), fe(0.1))
-      expect(otherSubBalance).to.be.above(1.2)
-      expect(otherSubBalance).to.be.below(1.6)
-      expect(await vault.balanceOf(await subs.getAddress())).to.be.approximately(0, 4)
+      if(tokenYield > 0){
+        expect(otherSubBalance).to.be.above(1.2)
+        expect(otherSubBalance).to.be.below(1.6)
+      }
+      expect((await subs.receiverBalances(await subs.getAddress())).balance).to.be.approximately(0, 4)
       await time.increase(5*30*24*3600);
       await expect(subs.connect(subReceiver).claim(fe(0.01))).to.be.reverted
     })

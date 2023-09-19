@@ -35,6 +35,7 @@ contract YearnAdapter is Owned {
     ERC20 public immutable rewardsToken;
     uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
     uint public totalSupply;
+    uint public minBalanceToTriggerDeposit;
 
     constructor(
         address vault_,
@@ -66,22 +67,44 @@ contract YearnAdapter is Owned {
         rewardRecipient = _rewardRecipient;
     }
 
-    function deposit(uint256 assets) internal returns (uint) {
-        uint ourShares = convertToShares(assets);
-        totalSupply += ourShares;
+    function setMinBalanceToTriggerDeposit(uint _minBalanceToTriggerDeposit) external onlyOwner() {
+        minBalanceToTriggerDeposit = _minBalanceToTriggerDeposit;
+    }
+
+    // Can be triggered anyway by making a deposit higher than minBalanceToTriggerDeposit
+    function triggerDeposit() external {
+        forceDeposit(asset.balanceOf(address(this)));
+    }
+
+    function forceDeposit(uint assets) internal {
         uint shares = vault.deposit(assets);
         stakingRewards.stake(shares); // this can revert if contract is sunset, but if it does its not a huge deal because users can still withdraw
+    }
+
+    function deposit(uint256 assets) internal returns (uint) {
+        uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
+        totalSupply += ourShares;
+        uint assetBalance = asset.balanceOf(address(this));
+        if(assetBalance > minBalanceToTriggerDeposit){
+            forceDeposit(assetBalance);
+        }
         return ourShares;
     }
 
     function redeem(uint256 shares, address receiver) internal {
-        uint yearnShares = (shares * stakingRewards.balanceOf(address(this))) / totalSupply;
-        stakingRewards.withdraw(yearnShares);
-        vault.withdraw(yearnShares, receiver);
+        uint assets = convertToAssets(shares);
+        totalSupply -= shares;
+        if(assets <= asset.balanceOf(address(this))){
+            asset.safeTransfer(receiver, assets);
+        } else {
+            uint yearnShares = (assets * DIVISOR) / vault.pricePerShare();
+            stakingRewards.withdraw(yearnShares);
+            vault.withdraw(yearnShares, receiver);
+        }
     }
 
     function totalAssets() public view returns (uint256) {
-        return (stakingRewards.balanceOf(address(this)) * vault.pricePerShare())/DIVISOR;
+        return (stakingRewards.balanceOf(address(this)) * vault.pricePerShare())/DIVISOR + asset.balanceOf(address(this));
     }
 
     function convertToShares(uint256 assets) public view returns (uint256) {
