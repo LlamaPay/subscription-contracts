@@ -3,11 +3,10 @@ const func = async function (hre:any) {
   const {deploy} = deployments;
 
   const {deployer} = await getNamedAccounts();
-  const YearnERC4626 = await deployments.get('YearnERC4626');
 
   await deploy('Subs', {
     from: deployer,
-    args: [5*60, YearnERC4626.address, deployer, 1694919024], // 2023-9-1, 12:00:00 am UTC
+    args: [5*60, "0x65343F414FFD6c97b0f6add33d16F6845Ac22BAc", deployer, 1694919024, deployer, "0xf8126ef025651e1b313a6893fcf4034f4f4bd2aa"], // 2023-9-1, 12:00:00 am UTC
     log: true,
     autoMine: true, // speed up deployment on local network (ganache, hardhat), no effect on live networks
     //deterministicDeployment: true,
