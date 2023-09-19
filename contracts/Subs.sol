@@ -64,6 +64,7 @@ contract Subs is BoringBatchable, YearnAdapter {
                 uint balance = bal.balance;
                 uint amountPerPeriod = bal.amountPerPeriod;
                 do {
+                    // here lastUpdate < currentPeriod is always true
                     amountPerPeriod -= receiverAmountToExpire[receiver][lastUpdate];
                     balance += (amountPerPeriod * sharesPerPeriod[lastUpdate]) / DIVISOR;
                     lastUpdate += periodDuration;
@@ -120,7 +121,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         bytes32 subId = getSubId(msg.sender, initialPeriod, expirationDate, amountPerCycle, receiver, accumulator, initialShares);
         require(subs[subId] == true, "sub doesn't exist");
         delete subs[subId];
-        if(expirationDate > block.timestamp){
+        if(expirationDate >= block.timestamp){
             // Most common case, solved in O(1)
             uint sharesPaid = (sharesAccumulator - accumulator).mulDivUp(amountPerCycle, DIVISOR);
             // sharesLeft can underflow if either share price goes down or because of rounding
