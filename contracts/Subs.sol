@@ -12,7 +12,7 @@ contract Subs is BoringBatchable, YearnAdapter {
 
     uint public immutable periodDuration;
     address public immutable feeCollector;
-    uint public currentPeriod; // Invariant: currentPeriod <= block.timestamp
+    uint public currentPeriod; // Invariant: currentPeriod < block.timestamp
     uint public sharesAccumulator;
     mapping(address => mapping(uint256 => uint256)) public receiverAmountToExpire;
     struct ReceiverBalance {
@@ -37,14 +37,14 @@ contract Subs is BoringBatchable, YearnAdapter {
         require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
-        require(currentPeriod <= block.timestamp);
+        require(currentPeriod < block.timestamp);
         feeCollector = _feeCollector;
     }
 
     function _updateGlobal() private {
         if(block.timestamp > currentPeriod + periodDuration){
             uint shares = convertToShares(DIVISOR);
-            sharesAccumulator += ((block.timestamp - currentPeriod)/periodDuration)*shares; // Loss of precision here is a wanted effect
+            sharesAccumulator += ((block.timestamp - currentPeriod - 1)/periodDuration)*shares; // Loss of precision here is a wanted effect
             do {
                 sharesPerPeriod[currentPeriod] = shares;
                 currentPeriod += periodDuration;
