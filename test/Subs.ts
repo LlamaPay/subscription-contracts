@@ -91,8 +91,9 @@ describe("Subs", function () {
         "function transfer(address spender, uint256 amount) external returns (bool)"
     ], daiWhale)
 
+    const startTimestamp =  await time.latest()
     const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, await time.latest(), feeCollector.address, stakingRewards, fe(17));
+    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, fe(17));
 
     const vault = new ethers.Contract(await subs.getAddress(),[
       //"function balanceOf(address account) external view returns (uint256)",
@@ -102,7 +103,7 @@ describe("Subs", function () {
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
-    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault, otherSubscriber };
+    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault, otherSubscriber, startTimestamp };
   }
 
   describe("Basic", function () {
@@ -186,6 +187,10 @@ describe("Subs", function () {
     })
 
     it("cant unsub twice", async function () {
+      const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
+      await expect(subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))).to.be.reverted
     })
 
     it("claim correctly discounts expirations", async function () {
@@ -195,6 +200,75 @@ describe("Subs", function () {
     })
 
     it("share prices are tracked properly (test with wild swings)", async function () {
+    })
+
+    it("actions at time boundaries behave properly", async function () {
+      const { subs, daiWhale, subReceiver, startTimestamp, token, vault } = await loadFixture(deployFixture);
+      const periodDuration = Number(await subs.periodDuration())
+      const prevBal1 = await token.balanceOf(daiWhale.address)
+      await time.increaseTo(startTimestamp+periodDuration-1)
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      expect(await token.balanceOf(daiWhale.address) - prevBal1).to.be.eq(-fe(91))
+      expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
+      await time.increaseTo(startTimestamp+periodDuration*7-1)
+      {
+        const prevBal = await token.balanceOf(daiWhale.address)
+        await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
+        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(13), 1)
+      }
+      {
+        await time.increaseTo(startTimestamp+periodDuration*9)
+        const prevBal = await token.balanceOf(subReceiver.address)
+        await subs.connect(subReceiver).claim(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, fe(1), periodDuration))
+        expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
+        expect(await token.balanceOf(subReceiver.address) - prevBal).to.be.approximately(fe(13*6*0.99), fe(0.01))
+      }
+    })
+
+    it("actions at time boundaries behave properly (expiration - 1s)", async function () {
+      const { subs, daiWhale, subReceiver, startTimestamp, token, vault } = await loadFixture(deployFixture);
+      const periodDuration = Number(await subs.periodDuration())
+      const prevBal1 = await token.balanceOf(daiWhale.address)
+      await time.increaseTo(startTimestamp+periodDuration-1)
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      expect(await token.balanceOf(daiWhale.address) - prevBal1).to.be.eq(-fe(91))
+      expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
+      await time.increaseTo(startTimestamp+periodDuration*7-2)
+      {
+        const prevBal = await token.balanceOf(daiWhale.address)
+        await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
+        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(13), 1)
+      }
+      {
+        await time.increaseTo(startTimestamp+periodDuration*9)
+        const prevBal = await token.balanceOf(subReceiver.address)
+        await subs.connect(subReceiver).claim(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, fe(1), periodDuration))
+        expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
+        expect(await token.balanceOf(subReceiver.address) - prevBal).to.be.approximately(fe(13*6*0.99), fe(0.01))
+      }
+    })
+
+    it("actions at time boundaries behave properly (expiration + 1s)", async function () {
+      const { subs, daiWhale, subReceiver, startTimestamp, token, vault } = await loadFixture(deployFixture);
+      const periodDuration = Number(await subs.periodDuration())
+      const prevBal1 = await token.balanceOf(daiWhale.address)
+      await time.increaseTo(startTimestamp+periodDuration-1)
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
+      expect(await token.balanceOf(daiWhale.address) - prevBal1).to.be.eq(-fe(91))
+      expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
+      await time.increaseTo(startTimestamp+periodDuration*7)
+      {
+        const prevBal = await token.balanceOf(daiWhale.address)
+        await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
+        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(0), 1)
+      }
+      {
+        await time.increaseTo(startTimestamp+periodDuration*9)
+        const prevBal = await token.balanceOf(subReceiver.address)
+        await subs.connect(subReceiver).claim(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, fe(1), periodDuration))
+        expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
+        expect(await token.balanceOf(subReceiver.address) - prevBal).to.be.approximately(fe(13*7*0.99), fe(0.01))
+      }
     })
 
     it("amount instantly pulled is correct when periodDuration is 5mins", async function () {
