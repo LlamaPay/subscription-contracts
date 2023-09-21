@@ -35,7 +35,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
         // This can be solved by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
         // however the extra complexity and risk introduced by this is imo not worth handling the edge case where there are ZERO interactions in >10 years
-        //require(_periodDuration >= 7 days, "periodDuration too smol");
+        require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         require(currentPeriod < block.timestamp);
