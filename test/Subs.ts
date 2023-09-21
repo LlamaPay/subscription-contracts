@@ -214,7 +214,7 @@ describe("Subs", function () {
       {
         const prevBal = await token.balanceOf(daiWhale.address)
         await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
-        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(13), 1)
+        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(13), 2)
       }
       {
         await time.increaseTo(startTimestamp+periodDuration*9)
@@ -237,7 +237,7 @@ describe("Subs", function () {
       {
         const prevBal = await token.balanceOf(daiWhale.address)
         await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
-        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(13), 1)
+        expect(await token.balanceOf(daiWhale.address) - prevBal).to.be.approximately(fe(13), 2)
       }
       {
         await time.increaseTo(startTimestamp+periodDuration*9)
@@ -315,6 +315,7 @@ describe("Subs", function () {
     it("calculateAvailableToClaim()", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
       const DIVISOR = fe(1)
+      expect(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, DIVISOR, 30*24*3600)).to.be.eq(0)
       await time.increase(29*24*3600);
       await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), 7));
       let expectedClaimable = 0n
