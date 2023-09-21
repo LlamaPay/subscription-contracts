@@ -24,7 +24,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     mapping(uint256 => uint256) public sharesPerPeriod;
     mapping(bytes32 => bool) public subs;
 
-    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares);
+    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
@@ -113,7 +113,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         bytes32 subId = getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft);
         require(subs[subId] == false, "duplicated sub");
         subs[subId] = true;
-        emit NewSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft);
+        emit NewSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {
