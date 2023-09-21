@@ -25,6 +25,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     mapping(bytes32 => bool) public subs;
 
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
+    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
@@ -34,7 +35,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
         // This can be solved by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
         // however the extra complexity and risk introduced by this is imo not worth handling the edge case where there are ZERO interactions in >10 years
-        require(_periodDuration >= 7 days, "periodDuration too smol");
+        //require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         require(currentPeriod < block.timestamp);
@@ -89,6 +90,24 @@ contract Subs is BoringBatchable, YearnAdapter {
                 initialShares
             )
         );
+    }
+
+    // Copy of subscribe() but with claimableThisPeriod = 0
+    // This is for users that have unsubscribed during the current period but want to subscribe again
+    // If they call subscribe() they would have to pay for the remaining of the current period, which they have already paid for
+    // This function allows them to delay the subscription till the beginning of the next period to avoid that
+    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 cycles) external {
+        _updateReceiver(receiver);
+        uint amount = amountPerCycle * cycles;
+        asset.safeTransferFrom(msg.sender, address(this), amount);
+        uint shares = deposit(amount);
+        uint expiration = currentPeriod + periodDuration*cycles;
+        receiverAmountToExpire[receiver][expiration] += amountPerCycle;
+        receiverBalances[receiver].amountPerPeriod += amountPerCycle;
+        bytes32 subId = getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, shares);
+        require(subs[subId] == false, "duplicated sub");
+        subs[subId] = true;
+        emit NewDelayedSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, shares, subId);
     }
 
     function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
