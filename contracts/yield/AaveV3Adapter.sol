@@ -10,6 +10,10 @@ interface IPool {
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
 }
 
+interface AToken {
+    function UNDERLYING_ASSET_ADDRESS() external returns (address);
+}
+
 interface IRewardsController {
     function claimAllRewards(address[] calldata assets, address to) external
         returns (address[] memory rewardsList, uint256[] memory claimedAmounts);
@@ -25,9 +29,8 @@ contract AaveV3Adapter is BaseAdapter {
         address rewardRecipient_,
         address aToken_,
         address rewardsController_,
-        address asset_,
         uint minBalanceToTriggerDeposit_
-    ) BaseAdapter(asset_, rewardRecipient_, minBalanceToTriggerDeposit_) {
+    ) BaseAdapter(AToken(aToken_).UNDERLYING_ASSET_ADDRESS(), rewardRecipient_, minBalanceToTriggerDeposit_) {
         lendingPool = IPool(lendingPool_);
         aToken = ERC20(aToken_);
         rewardsController = IRewardsController(rewardsController_);
