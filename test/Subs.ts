@@ -98,6 +98,19 @@ describe("Subs", function () {
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0);
     });
 
+    it("subscribeForNextPeriod", async function () {
+      const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
+      await time.increase(3*24*3600);
+      const prevBal = await token.balanceOf(daiWhale.address)
+      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), 12), "NewDelayedSubscription");
+      expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(fe(5*12));
+      await time.increase(30*24*3600);
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
+      const prevBal2 = await token.balanceOf(daiWhale.address)
+      await subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5e3), 0);
+      expect(await token.balanceOf(daiWhale.address) - prevBal2).to.eq(0);
+    });
+
     it("Should reduce funds", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       const prevBal = await token.balanceOf(daiWhale.address)
