@@ -11,8 +11,8 @@ interface IPool {
 }
 
 interface AToken {
-    function UNDERLYING_ASSET_ADDRESS() external returns (address);
-    function POOL() external returns (address);
+    function UNDERLYING_ASSET_ADDRESS() view external returns (address);
+    function POOL() view external returns (address);
 }
 
 interface IRewardsController {
