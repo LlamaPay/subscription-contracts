@@ -24,8 +24,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     mapping(uint256 => uint256) public sharesPerPeriod;
     mapping(bytes32 => bool) public subs;
 
-    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
-    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
+    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, uint claimableThisPeriod, bytes32 subId);
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
@@ -35,7 +34,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
         // This can be solved by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
         // however the extra complexity and risk introduced by this is imo not worth handling the edge case where there are ZERO interactions in >10 years
-        require(_periodDuration >= 7 days, "periodDuration too smol");
+        //require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         require(currentPeriod < block.timestamp);
@@ -92,30 +91,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         );
     }
 
-    // Copy of subscribe() but with claimableThisPeriod = 0
-    // This is for users that have unsubscribed during the current period but want to subscribe again
-    // If they call subscribe() they would have to pay for the remaining of the current period, which they have already paid for
-    // This function allows them to delay the subscription till the beginning of the next period to avoid that
-    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 cycles) external {
-        _updateReceiver(receiver);
-        uint amount = amountPerCycle * cycles;
-        asset.safeTransferFrom(msg.sender, address(this), amount);
-        uint shares = deposit(amount);
-        uint expiration = currentPeriod + periodDuration*cycles;
-        receiverAmountToExpire[receiver][expiration] += amountPerCycle;
-        receiverBalances[receiver].amountPerPeriod += amountPerCycle;
-        bytes32 subId = getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, shares);
-        require(subs[subId] == false, "duplicated sub");
-        subs[subId] = true;
-        emit NewDelayedSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, shares, subId);
-    }
-
-    function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
-        _updateReceiver(receiver);
-        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod <= block.timestamp
-        // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
-        // thus this will never underflow and claimableThisPeriod <= amountPerCycle
-        uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
+    function _subscribe(address receiver, uint amountPerCycle, uint256 cycles, uint claimableThisPeriod) internal {
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
         asset.safeTransferFrom(msg.sender, address(this), amount);
@@ -127,12 +103,35 @@ contract Subs is BoringBatchable, YearnAdapter {
         // If vault were to lose money, contract will keep working, but it will have bad debt, so the last users to withdraw won't be able to
         receiverAmountToExpire[receiver][expiration] += amountPerCycle;
         receiverBalances[receiver].amountPerPeriod += amountPerCycle;
-        receiverBalances[receiver].balance += (shares * claimableThisPeriod) / amount;
+        receiverBalances[receiver].balance += (shares * claimableThisPeriod) / amount; // if claimableThisPeriod = 0 && cycles == 0 this will revert, but thats fine since thats a useless sub
         uint sharesLeft = (amountForFuture * shares) / amount;
         bytes32 subId = getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft);
         require(subs[subId] == false, "duplicated sub");
         subs[subId] = true;
-        emit NewSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
+        emit NewSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft, claimableThisPeriod, subId);
+    }
+
+    function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
+        _updateReceiver(receiver);
+        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod <= block.timestamp
+        // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
+        // thus this will never underflow and claimableThisPeriod <= amountPerCycle
+        uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
+        _subscribe(receiver, amountPerCycle, cycles, claimableThisPeriod);
+    }
+
+    // Copy of subscribe() but with claimableThisPeriod = 0
+    // This is for users that have unsubscribed during the current period but want to subscribe again
+    // If they call subscribe() they would have to pay for the remaining of the current period, which they have already paid for
+    // This function allows them to delay the subscription till the beginning of the next period to avoid that
+    // ---
+    // This could be gas optimized by copying over the code of _subscribe() and removing operations associated with claimableThisPeriod
+    // like setting receiverBalances[receiver].balance. This saves 200 gas for subscribe() and 3k gas for subscribeForNextPeriod()
+    // However that adds a lot of code that could introduce bugs, and subscribeForNextPeriod() should be rarely called
+    // So I don't think that optimization is worth the security trade-offs
+    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 cycles) external {
+        _updateReceiver(receiver);
+        _subscribe(receiver, amountPerCycle, cycles, 0);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {
