@@ -29,51 +29,63 @@ contract Subs is BoringBatchable, YearnAdapter {
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
         address stakingRewards_, uint minBalanceToTriggerDeposit_) YearnAdapter(_vault, rewardRecipient_, stakingRewards_, minBalanceToTriggerDeposit_){
-        // periodDuration MUST NOT be a very small number, otherwise loops could end growing bigger than block limit
+        // periodDuration MUST NOT be a very small number, otherwise loops could end growing big and blowing up gas costs
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
-        // so by enforcing a minimum of 1 week for periodDuration we ensure that this wont be a problem unless nobody interacts with contract in >10 years
-        // This can be solved by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
-        // however the extra complexity and risk introduced by this is imo not worth handling the edge case where there are ZERO interactions in >10 years
-        //require(_periodDuration >= 7 days, "periodDuration too smol");
+        // We solve that by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
+        // however there's still the problem of gas costs growing so much that cost to do all those updates would be prohibitive,
+        // So we enforce a minimum of 1 week for periodDuration, which keeps the max gas costs bounded (it would take >10yrs for it to grow bigger than the current gas limit per block)
+        require(_periodDuration >= 7 days, "periodDuration too smol");
         periodDuration = _periodDuration;
         currentPeriod = _currentPeriod;
         require(currentPeriod < block.timestamp);
         feeCollector = _feeCollector;
     }
 
-    function _updateGlobal() private {
+    function _updateGlobal(uint limit) private {
         if(block.timestamp > currentPeriod + periodDuration){
             uint shares = convertToShares(DIVISOR);
-            sharesAccumulator += ((block.timestamp - currentPeriod - 1)/periodDuration)*shares; // Loss of precision here is a wanted effect
             do {
                 sharesPerPeriod[currentPeriod] = shares;
                 currentPeriod += periodDuration;
-            } while(block.timestamp > currentPeriod + periodDuration);
+                sharesAccumulator += shares; // This could be optimized with `sharesAccumulator += ((block.timestamp - currentPeriod - 1)/periodDuration)*shares;`, but not worth it
+            } while(limit > currentPeriod + periodDuration);
         }
     }
 
-    function _updateReceiver(address receiver) private {
+    function min(uint a, uint b) pure internal returns (uint) {
+        return a>b?b:a;
+    } 
+
+    function _updateReceiver(address receiver, uint limit) private {
         ReceiverBalance storage bal = receiverBalances[receiver];
         uint lastUpdate = bal.lastUpdate;
         if(lastUpdate + periodDuration < block.timestamp){
-            _updateGlobal(); // if lastUpdate is up to date then currentPeriod must be up to date since lastUpdate is only updated after calling _updateGlobal()
+            _updateGlobal(limit); // if lastUpdate is up to date then currentPeriod must be up to date since lastUpdate is only updated after calling _updateGlobal()
             if(lastUpdate == 0){
                 lastUpdate = currentPeriod;
             } else {
                 // This optimization can increase costs a little on subscribe() but decreases costs a lot when _updateReceiver() hasnt been called in a long time
                 uint balance = bal.balance;
                 uint amountPerPeriod = bal.amountPerPeriod;
+                uint limitToFill = min(currentPeriod, limit);
                 do {
                     // here lastUpdate < currentPeriod is always true
                     amountPerPeriod -= receiverAmountToExpire[receiver][lastUpdate];
                     balance += (amountPerPeriod * sharesPerPeriod[lastUpdate]) / DIVISOR;
                     lastUpdate += periodDuration;
-                } while (lastUpdate < currentPeriod);
+                } while (lastUpdate < limitToFill);
                 bal.balance = balance;
                 bal.amountPerPeriod = amountPerPeriod;
             }
             bal.lastUpdate = lastUpdate;
         }
+    }
+
+    // This allows partial updates in case an update to current timestamp results in gas costs higher than the block limit
+    // By splitting this into multiple partial calls you could get around the block limit and ensure that any funds can still be withdrawn even if called after >10yr
+    function partialUpdateReceiver(address receiver, uint limit) external {
+        require(limit < block.timestamp, "limit too big");
+        _updateReceiver(receiver, limit);
     }
 
     function getSubId(address owner, uint initialPeriod, uint expirationDate,
@@ -112,7 +124,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     }
 
     function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
-        _updateReceiver(receiver);
+        _updateReceiver(receiver, block.timestamp);
         // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod <= block.timestamp
         // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
         // thus this will never underflow and claimableThisPeriod <= amountPerCycle
@@ -130,12 +142,12 @@ contract Subs is BoringBatchable, YearnAdapter {
     // However that adds a lot of code that could introduce bugs, and subscribeForNextPeriod() should be rarely called
     // So I don't think that optimization is worth the security trade-offs
     function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 cycles) external {
-        _updateReceiver(receiver);
+        _updateReceiver(receiver, block.timestamp);
         _subscribe(receiver, amountPerCycle, cycles, 0);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {
-        _updateGlobal();
+        _updateGlobal(block.timestamp);
         bytes32 subId = getSubId(msg.sender, initialPeriod, expirationDate, amountPerCycle, receiver, accumulator, initialShares);
         require(subs[subId] == true, "sub doesn't exist");
         delete subs[subId];
@@ -161,7 +173,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     }
 
     function claim(uint256 amount) external {
-        _updateReceiver(msg.sender);
+        _updateReceiver(msg.sender, block.timestamp);
         receiverBalances[msg.sender].balance -= amount;
         redeem((amount * 99) / 100, msg.sender);
         receiverBalances[feeCollector].balance += amount / 100;
