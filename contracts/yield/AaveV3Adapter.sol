@@ -12,6 +12,7 @@ interface IPool {
 
 interface AToken {
     function UNDERLYING_ASSET_ADDRESS() external returns (address);
+    function POOL() external returns (address);
 }
 
 interface IRewardsController {
@@ -25,13 +26,12 @@ contract AaveV3Adapter is BaseAdapter {
     IRewardsController public immutable rewardsController;
 
     constructor(
-        address lendingPool_,
-        address rewardRecipient_,
         address aToken_,
+        address rewardRecipient_,
         address rewardsController_,
         uint minBalanceToTriggerDeposit_
     ) BaseAdapter(AToken(aToken_).UNDERLYING_ASSET_ADDRESS(), rewardRecipient_, minBalanceToTriggerDeposit_) {
-        lendingPool = IPool(lendingPool_);
+        lendingPool = IPool(AToken(aToken_).POOL());
         aToken = ERC20(aToken_);
         rewardsController = IRewardsController(rewardsController_);
         asset.approve(address(lendingPool), type(uint256).max);
