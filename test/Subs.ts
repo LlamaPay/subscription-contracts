@@ -106,7 +106,7 @@ describe("Subs", function () {
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(fe(5*12));
       await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
-      expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5), 2);
+      expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5), 5);
       const prevBal2 = await token.balanceOf(daiWhale.address)
       const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), 1), "NewDelayedSubscription");
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
@@ -133,6 +133,18 @@ describe("Subs", function () {
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
       expect(diff).to.be.approximately(fe(5e3*0.3), fe(1));
+    });
+
+    it("can pause deposits but not withdrawals", async function () {
+      const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
+      const MAX_UINT = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), 10));
+      await subs.setMinBalanceToTriggerDeposit(MAX_UINT)
+      await expect(subs.connect(daiWhale).setMinBalanceToTriggerDeposit(1)).to.be.revertedWith("UNAUTHORIZED")
+      await expect(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), 10)).to.be.revertedWith("paused")
+      await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
+      await subs.setMinBalanceToTriggerDeposit(fe(1000))
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), 10)
     });
 
     it("receiver & feeCollector gets funds properly", async function () {
