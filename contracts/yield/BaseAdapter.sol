@@ -54,6 +54,7 @@ abstract contract BaseAdapter is Owned {
     //   into a single large deposit for which we pay O(1) gas, thus amortizing costs.
     //   This means that some money will sit idle and not earn any yield, but thats ok because we can set an upper bound and make it a small % of total TVL.
     //   The min balance to trigger a deposit is configurable by owner so we can change it depending on gas costs, yield APYs and contract activity.
+    //   This also applies for withdrawals, if we have enough money in the buffer we'll just use that so we don't have to pull money from vault
     function deposit(uint256 assets) internal returns (uint) {
         uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
         totalSupply += ourShares;

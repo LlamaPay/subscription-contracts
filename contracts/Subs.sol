@@ -24,7 +24,8 @@ contract Subs is BoringBatchable, YearnAdapter {
     mapping(uint256 => uint256) public sharesPerPeriod;
     mapping(bytes32 => bool) public subs;
 
-    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, uint claimableThisPeriod, bytes32 subId);
+    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
+    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
@@ -103,7 +104,8 @@ contract Subs is BoringBatchable, YearnAdapter {
         );
     }
 
-    function _subscribe(address receiver, uint amountPerCycle, uint256 cycles, uint claimableThisPeriod) internal {
+    function _subscribe(address receiver, uint amountPerCycle, uint256 cycles, uint claimableThisPeriod) internal
+        returns (uint expirationDate, uint256, bytes32) {
         uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
         asset.safeTransferFrom(msg.sender, address(this), amount);
@@ -120,7 +122,7 @@ contract Subs is BoringBatchable, YearnAdapter {
         bytes32 subId = getSubId(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft);
         require(subs[subId] == false, "duplicated sub");
         subs[subId] = true;
-        emit NewSubscription(msg.sender, currentPeriod, expiration, amountPerCycle, receiver, sharesAccumulator, sharesLeft, claimableThisPeriod, subId);
+        return (expiration, sharesLeft, subId);
     }
 
     function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
@@ -129,7 +131,8 @@ contract Subs is BoringBatchable, YearnAdapter {
         // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
         // thus this will never underflow and claimableThisPeriod <= amountPerCycle
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
-        _subscribe(receiver, amountPerCycle, cycles, claimableThisPeriod);
+        (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, cycles, claimableThisPeriod);
+        emit NewSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
     }
 
     // Copy of subscribe() but with claimableThisPeriod = 0
@@ -143,7 +146,8 @@ contract Subs is BoringBatchable, YearnAdapter {
     // So I don't think that optimization is worth the security trade-offs
     function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 cycles) external {
         _updateReceiver(receiver, block.timestamp);
-        _subscribe(receiver, amountPerCycle, cycles, 0);
+        (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, cycles, 0);
+        emit NewDelayedSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {

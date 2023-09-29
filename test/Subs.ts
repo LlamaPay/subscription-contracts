@@ -102,13 +102,13 @@ describe("Subs", function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       await time.increase(3*24*3600);
       const prevBal = await token.balanceOf(daiWhale.address)
-      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), 12));
+      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), 12), "NewDelayedSubscription");
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(fe(5*12));
       await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5), 2);
       const prevBal2 = await token.balanceOf(daiWhale.address)
-      const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), 1));
+      const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), 1), "NewDelayedSubscription");
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
       expect(await token.balanceOf(daiWhale.address) - prevBal2).to.eq(0);
     });
