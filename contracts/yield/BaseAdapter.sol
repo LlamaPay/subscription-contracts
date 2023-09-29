@@ -13,7 +13,7 @@ abstract contract BaseAdapter is Owned {
     address public rewardRecipient;
     uint public immutable DIVISOR; // This is just a constant to query convertToShares and then divide result, vault.convertToShares(DIVISOR) must never revert
     uint public totalSupply;
-    uint public minBalanceToTriggerDeposit;
+    uint public minBalanceToTriggerDeposit; // Threshold after which we'll trigger a deposit to yield source, also doubles as a pause button for new deposits if set to type(uint256).max
 
     constructor(
         address asset_,
@@ -59,6 +59,7 @@ abstract contract BaseAdapter is Owned {
         uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
         totalSupply += ourShares;
         uint assetBalance = asset.balanceOf(address(this));
+        require(minBalanceToTriggerDeposit < type(uint256).max, "paused"); // this only pauses new deposits, users can still withdraw all their money
         if(assetBalance > minBalanceToTriggerDeposit){
             forceDeposit(assetBalance);
         }
