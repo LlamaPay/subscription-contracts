@@ -18,7 +18,7 @@ async function calculateSubBalance(sub: any, subs: any, currentTimestamp: number
     }
     const sharesPaid = ((sharesAccumulator - sub.accumulator) * sub.amountPerCycle) / (DIVISOR as any);
     const sharesLeft = sub.initialShares - sharesPaid;
-    return sharesLeft < 0? 0n:vault.convertToAssets(sharesLeft)
+    return vault.convertToAssets(sharesLeft)
   } else {
     const periods = []
     for (let period = sub.initialPeriod; period < sub.expirationDate; period += BigInt(periodDuration)) {
@@ -32,8 +32,7 @@ async function calculateSubBalance(sub: any, subs: any, currentTimestamp: number
     periodShares.forEach((shares) => {
       subsetAccumulator += shares === 0n ? currentSharePrice : shares;
     })
-    const shares = sub.initialShares - ((subsetAccumulator * (sub.amountPerCycle as bigint)) / DIVISOR)
-    return shares < 0? 0n:vault.convertToAssets(shares);
+    return vault.convertToAssets(sub.initialShares - ((subsetAccumulator * (sub.amountPerCycle as bigint)) / DIVISOR));
   }
 }
 
