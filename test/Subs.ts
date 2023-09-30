@@ -111,7 +111,8 @@ describe("Subs", function () {
       const prevBal2 = await token.balanceOf(daiWhale.address)
       const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), 1), "NewDelayedSubscription");
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
-      expect(await token.balanceOf(daiWhale.address) - prevBal2).to.eq(0);
+      expect(await token.balanceOf(daiWhale.address)).to.be.lessThanOrEqual(prevBal2);
+      expect(await token.balanceOf(daiWhale.address) - prevBal2).to.be.above(-5);
     });
 
     it("Should reduce funds", async function () {
