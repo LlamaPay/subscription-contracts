@@ -39,8 +39,20 @@ abstract contract BaseAdapter is Owned {
     // - redeem() doesn't support withdrawing money from both asset and vault, so in the case where the last user wants to withdraw
     //    and only 50% of money is in the vault, owner could increase minBalanceToTriggerDeposit to max to prevent new vault deposits
     //    and prevent the user from getting the money, asking for a ransom. With this method user can simply call this to solve the situation
-    function triggerDeposit() external {
-        forceDeposit(asset.balanceOf(address(this)));
+    function triggerDeposit(uint maxToPull) external {
+        forceDepositAndCheck(asset.balanceOf(address(this)), msg.sender, maxToPull);
+    }
+
+    // In some cases totalAssets() after coins are deposited into the yield vault, this could be used in an attack so this function ensures this never happens
+    function forceDepositAndCheck(uint amount, address receiver, uint maxToPull) internal {
+        uint oldTotalAssets = totalAssets();
+        forceDeposit(amount);
+        uint newTotalAssets = totalAssets();
+        if(newTotalAssets < oldTotalAssets){
+            uint pullAmount = oldTotalAssets - newTotalAssets;
+            require(pullAmount < maxToPull, ">maxToPull");
+            asset.transferFrom(receiver, address(this), pullAmount);
+        }
     }
 
     function forceDeposit(uint assets) internal virtual;
@@ -55,14 +67,14 @@ abstract contract BaseAdapter is Owned {
     //   This means that some money will sit idle and not earn any yield, but thats ok because we can set an upper bound and make it a small % of total TVL.
     //   The min balance to trigger a deposit is configurable by owner so we can change it depending on gas costs, yield APYs and contract activity.
     //   This also applies for withdrawals, if we have enough money in the buffer we'll just use that so we don't have to pull money from vault
-    function deposit(uint256 assets) internal returns (uint) {
-        uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
-        totalSupply += ourShares;
+    function deposit(uint256 assets, address receiver, uint maxToPull) internal returns (uint) {
         uint assetBalance = asset.balanceOf(address(this));
         require(minBalanceToTriggerDeposit < type(uint256).max, "paused"); // this only pauses new deposits, users can still withdraw all their money
         if(assetBalance > minBalanceToTriggerDeposit){
-            forceDeposit(assetBalance);
+            forceDepositAndCheck(assetBalance, receiver, maxToPull);
         }
+        uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
+        totalSupply += ourShares;
         return ourShares;
     }
 
