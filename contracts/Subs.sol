@@ -25,7 +25,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     mapping(bytes32 => bool) public subs;
 
     event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
-    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
+    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId, uint instantPayment);
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
@@ -104,13 +104,12 @@ contract Subs is BoringBatchable, YearnAdapter {
         );
     }
 
-    function _subscribe(address receiver, uint amountPerCycle, uint256 cycles, uint claimableThisPeriod) internal
+    function _subscribe(address receiver, uint amountPerCycle, uint256 amountForFuture, uint claimableThisPeriod) internal
         returns (uint expirationDate, uint256, bytes32) {
-        uint amountForFuture = amountPerCycle * cycles;
         uint amount = amountForFuture + claimableThisPeriod;
         asset.safeTransferFrom(msg.sender, address(this), amount);
         // If subscribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
-        uint shares = deposit(amount, msg.sender, amountPerCycle/100); // Limit loss from deposit to 1% of cycle cost
+        (uint shares, uint cycles) = deposit(amount, amountPerCycle); // Limit loss from deposit to 1% of cycle cost
         uint expiration = currentPeriod + periodDuration*cycles;
         // Setting receiverAmountToExpire here makes the implicit assumption than all calls to convertToShares(DIVISOR) within _updateGlobal() in the future will return a lower number than the one returned right now,
         // in other words, that the underlying vault will never lose money and its pricePerShare() will not go down
@@ -125,29 +124,30 @@ contract Subs is BoringBatchable, YearnAdapter {
         return (expiration, sharesLeft, subId);
     }
 
-    function subscribe(address receiver, uint amountPerCycle, uint256 cycles) external {
+    function subscribe(address receiver, uint amountPerCycle, uint256 amountForFuture) external {
         _updateReceiver(receiver, block.timestamp);
         // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod <= block.timestamp
         // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
         // thus this will never underflow and claimableThisPeriod <= amountPerCycle
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
-        (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, cycles, claimableThisPeriod);
+        (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, amountForFuture, claimableThisPeriod);
         emit NewSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
     }
 
-    // Copy of subscribe() but with claimableThisPeriod = 0
+    // Copy of subscribe() but with claimableThisPeriod set by the user
     // This is for users that have unsubscribed during the current period but want to subscribe again
     // If they call subscribe() they would have to pay for the remaining of the current period, which they have already paid for
     // This function allows them to delay the subscription till the beginning of the next period to avoid that
+    // Also, it can be used for users that are upgrading their subscription
     // ---
     // This could be gas optimized by copying over the code of _subscribe() and removing operations associated with claimableThisPeriod
     // like setting receiverBalances[receiver].balance. This saves 200 gas for subscribe() and 3k gas for subscribeForNextPeriod()
     // However that adds a lot of code that could introduce bugs, and subscribeForNextPeriod() should be rarely called
     // So I don't think that optimization is worth the security trade-offs
-    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 cycles) external {
+    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 amountForFuture, uint256 instantPayment) external {
         _updateReceiver(receiver, block.timestamp);
-        (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, cycles, 0);
-        emit NewDelayedSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
+        (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, amountForFuture, instantPayment);
+        emit NewDelayedSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId, instantPayment);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {

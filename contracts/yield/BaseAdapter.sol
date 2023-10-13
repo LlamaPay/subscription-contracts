@@ -67,15 +67,24 @@ abstract contract BaseAdapter is Owned {
     //   This means that some money will sit idle and not earn any yield, but thats ok because we can set an upper bound and make it a small % of total TVL.
     //   The min balance to trigger a deposit is configurable by owner so we can change it depending on gas costs, yield APYs and contract activity.
     //   This also applies for withdrawals, if we have enough money in the buffer we'll just use that so we don't have to pull money from vault
-    function deposit(uint256 assets, address receiver, uint maxToPull) internal returns (uint) {
+    function deposit(uint256 assets, uint256 amountPerCycle) internal returns (uint shares, uint cycles) {
         uint assetBalance = asset.balanceOf(address(this));
+        uint newTotalAssets;
         require(minBalanceToTriggerDeposit < type(uint256).max, "paused"); // this only pauses new deposits, users can still withdraw all their money
         if(assetBalance > minBalanceToTriggerDeposit){
-            forceDepositAndCheck(assetBalance, receiver, maxToPull);
+            // Handle cases where totalAssets() drops after a deposit into yield source
+            uint oldTotalAssets = totalAssets();
+            forceDeposit(assetBalance);
+            newTotalAssets = totalAssets();
+            if(newTotalAssets < oldTotalAssets){
+                assets -= oldTotalAssets-newTotalAssets;
+            }
+        } else {
+            newTotalAssets = totalAssets();
         }
-        uint ourShares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets() - assets);
-        totalSupply += ourShares;
-        return ourShares;
+        cycles = assets/amountPerCycle;
+        shares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, newTotalAssets - assets);
+        totalSupply += shares;
     }
 
     function forceRedeem(uint assets, address receiver) internal virtual;
