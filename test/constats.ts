@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 // CHANGE THESE VARIABLES TO TEST WITH DIFFERENT VAULTS AND TOKENS WITH DIFFERENT DECIMALS
 const mainnet = false
 const useUSDC = false // Requires mainnet === false
-const useAAVE = false
+const useAAVE = true
 
 
 export const tokenAddress = mainnet?'0x6B175474E89094C44Da98b954EedeAC495271d0F':

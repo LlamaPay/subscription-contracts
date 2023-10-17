@@ -3,10 +3,10 @@ pragma solidity ^0.8.19;
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {BoringBatchable} from "./fork/BoringBatchable.sol";
-import {YearnAdapter} from "./yield/YearnAdapter.sol";
+import {AaveV3Adapter} from "./yield/AaveV3Adapter.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
-contract Subs is BoringBatchable, YearnAdapter {
+contract Subs is BoringBatchable, AaveV3Adapter {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -29,7 +29,7 @@ contract Subs is BoringBatchable, YearnAdapter {
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
-        address stakingRewards_, uint minBalanceToTriggerDeposit_) YearnAdapter(_vault, rewardRecipient_, stakingRewards_, minBalanceToTriggerDeposit_){
+        address stakingRewards_, uint minBalanceToTriggerDeposit_) AaveV3Adapter(_vault, rewardRecipient_, stakingRewards_, minBalanceToTriggerDeposit_){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing big and blowing up gas costs
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
         // We solve that by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
