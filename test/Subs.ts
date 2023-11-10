@@ -5,7 +5,7 @@ import {
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { getSub, unsubscribeParams } from "./helpers"
-import { tokenAddress, vaultAddress, whaleAddress, tokenYield, stakingRewards, fe, de, dd } from "./constats";
+import { tokenAddress, vaultAddress, whaleAddress, tokenYield, stakingRewards, fe, de, dd, minDepositToTriggerDeploy } from "./constats";
 
 
 
@@ -76,7 +76,7 @@ describe("Subs", function () {
 
     const startTimestamp =  await time.latest()
     const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, fe(17));
+    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, minDepositToTriggerDeploy);
 
     const vault = new ethers.Contract(await subs.getAddress(),[
       //"function balanceOf(address account) external view returns (uint256)",

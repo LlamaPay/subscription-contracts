@@ -21,3 +21,5 @@ export const stakingRewards = useAAVE?"0x929EC64c34a17401F460460D4B9390518E5B473
 export const fe = (n:number) => ethers.parseUnits(n.toFixed(5), useUSDC?6:18)
 export const de = (n:bigint|any) => Number(n)/(useUSDC?1e6:1e18)
 export const dd = (n:any) => new Date(Number(n) * 1e3).toISOString().split('T')[0]
+
+export const minDepositToTriggerDeploy = fe(1e6)
