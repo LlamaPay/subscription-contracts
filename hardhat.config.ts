@@ -17,13 +17,13 @@ const config: HardhatUserConfig = {
     hardhat: {
       forking: {
         url: "https://rpc.ankr.com/optimism", //"https://eth.llamarpc.com",
-        //blockNumber: 17589468
+        blockNumber: 111028932
       }
     },
     optimism: {
       url: "https://rpc.ankr.com/optimism",
       //accounts: [process.env.PRIVATEKEY!],
-      gasMultiplier: 1.1,
+      gasMultiplier: 1.2,
     },
   },
   namedAccounts: {

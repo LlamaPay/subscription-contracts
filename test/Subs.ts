@@ -7,7 +7,9 @@ import { ethers } from "hardhat";
 import { getSub, unsubscribeParams } from "./helpers"
 import { tokenAddress, vaultAddress, whaleAddress, tokenYield, stakingRewards, fe, de, dd, minDepositToTriggerDeploy } from "./constats";
 
-
+function yieldEarned(days:number, totalDeposit:number){
+  return fe(totalDeposit*tokenYield*days/365)
+}
 
 async function calculateSubBalance(sub: any, subs: any, currentTimestamp: number, vault: any, DIVISOR: bigint, periodDuration: number) {
   if (sub.expirationDate > currentTimestamp) {
@@ -106,7 +108,7 @@ describe("Subs", function () {
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(fe(5*12));
       await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
-      expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5), 5);
+      expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5) - yieldEarned(30, 5*12), fe(0.0001));
       const prevBal2 = await token.balanceOf(daiWhale.address)
       const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), fe(12*1), 0), "NewDelayedSubscription");
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
