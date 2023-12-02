@@ -40,6 +40,7 @@ abstract contract BaseAdapter is Owned {
     //    and only 50% of money is in the vault, owner could increase minBalanceToTriggerDeposit to max to prevent new vault deposits
     //    and prevent the user from getting the money, asking for a ransom. With this method user can simply call this to solve the situation
     function triggerDeposit(uint maxToPull) external {
+        require(tx.origin == msg.sender);
         forceDepositAndCheck(asset.balanceOf(address(this)), msg.sender, maxToPull);
     }
 
