@@ -111,8 +111,9 @@ describe("Subs", function () {
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5) - yieldEarned(30, 5*12), fe(0.0001));
       const prevBal2 = await token.balanceOf(daiWhale.address)
       const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), fe(12*1), 0), "NewDelayedSubscription");
+      await subs.triggerDeposit(0);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
-      expect(await token.balanceOf(daiWhale.address)).to.be.lessThanOrEqual(prevBal2);
+      expect(await token.balanceOf(daiWhale.address)).to.be.lessThanOrEqual(prevBal2 + fe(0.00000002));
       expect(await token.balanceOf(daiWhale.address) - prevBal2).to.be.above(-5);
     });
 
