@@ -78,7 +78,7 @@ describe("Subs", function () {
 
     const startTimestamp =  await time.latest()
     const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, minDepositToTriggerDeploy);
+    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards);
 
     const vault = new ethers.Contract(await subs.getAddress(),[
       //"function balanceOf(address account) external view returns (uint256)",
@@ -111,7 +111,6 @@ describe("Subs", function () {
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5) - yieldEarned(30, 5*12), fe(0.0001));
       const prevBal2 = await token.balanceOf(daiWhale.address)
       const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), fe(12*1), 0), "NewDelayedSubscription");
-      await subs.triggerDeposit(0);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
       expect(await token.balanceOf(daiWhale.address)).to.be.lessThanOrEqual(prevBal2 + fe(0.00000002));
       expect(await token.balanceOf(daiWhale.address) - prevBal2).to.be.above(-5);
@@ -139,15 +138,10 @@ describe("Subs", function () {
       expect(diff).to.be.approximately(fe(5e3*0.3), fe(1));
     });
 
-    it("can pause deposits but not withdrawals", async function () {
+    it("cant pause withdrawals", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
-      const MAX_UINT = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
       const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10)));
-      await subs.setMinBalanceToTriggerDeposit(MAX_UINT)
-      await expect(subs.connect(daiWhale).setMinBalanceToTriggerDeposit(1)).to.be.revertedWith("UNAUTHORIZED")
-      await expect(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10))).to.be.revertedWith("paused")
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
-      await subs.setMinBalanceToTriggerDeposit(fe(1000))
       await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10))
     });
 
@@ -293,7 +287,7 @@ describe("Subs", function () {
       const { daiWhale, subReceiver, token, feeCollector } = await loadFixture(deployFixture);
       const start = await time.latest()
       const Subs = await ethers.getContractFactory("Subs");
-      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards, fe(50));
+      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards);
       await token.approve(await subs.getAddress(), fe(1e6))
       for(let i=1; i<20; i++){
         await time.increaseTo(start + i*periodDuration*2); // restart to beginning of period

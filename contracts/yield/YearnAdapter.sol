@@ -32,9 +32,8 @@ contract YearnAdapter is BaseAdapter {
     constructor(
         address vault_,
         address rewardRecipient_,
-        address stakingRewards_,
-        uint minBalanceToTriggerDeposit_
-    ) BaseAdapter(Yearn(vault_).token(), rewardRecipient_, minBalanceToTriggerDeposit_) {
+        address stakingRewards_
+    ) BaseAdapter(Yearn(vault_).token(), rewardRecipient_) {
         vault = Yearn(vault_);
         stakingRewards = StakingRewards(stakingRewards_);
         rewardsToken = ERC20(stakingRewards.rewardsToken());

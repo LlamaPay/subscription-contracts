@@ -28,9 +28,8 @@ contract AaveV3Adapter is BaseAdapter {
     constructor(
         address aToken_,
         address rewardRecipient_,
-        address rewardsController_,
-        uint minBalanceToTriggerDeposit_
-    ) BaseAdapter(AToken(aToken_).UNDERLYING_ASSET_ADDRESS(), rewardRecipient_, minBalanceToTriggerDeposit_) {
+        address rewardsController_
+    ) BaseAdapter(AToken(aToken_).UNDERLYING_ASSET_ADDRESS(), rewardRecipient_) {
         lendingPool = IPool(AToken(aToken_).POOL());
         aToken = ERC20(aToken_);
         rewardsController = IRewardsController(rewardsController_);
