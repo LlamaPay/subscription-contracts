@@ -55,7 +55,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
 
     function min(uint a, uint b) pure internal returns (uint) {
         return a>b?b:a;
-    } 
+    }
 
     function _updateReceiver(address receiver, uint limit) private {
         ReceiverBalance storage bal = receiverBalances[receiver];
@@ -127,7 +127,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
 
     function subscribe(address receiver, uint amountPerCycle, uint256 amountForFuture) external {
         _updateReceiver(receiver, block.timestamp);
-        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod <= block.timestamp
+        // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod < block.timestamp
         // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
         // thus this will never underflow and claimableThisPeriod <= amountPerCycle
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
@@ -180,7 +180,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
     function claim(uint256 amount) external {
         _updateReceiver(msg.sender, block.timestamp);
         receiverBalances[msg.sender].balance -= amount;
-        redeem((amount * 99) / 100, msg.sender);
+        redeem((amount * 99) / 100, msg.sender); // feeCollector can't fully claim in 1 tx but leaving as is to keep code simple
         receiverBalances[feeCollector].balance += amount / 100;
     }
 }

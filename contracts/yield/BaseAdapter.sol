@@ -41,8 +41,8 @@ abstract contract BaseAdapter is Owned {
     //    If this method was not caller-restricted, user could simply call it to solve that situation
     // However the danger seems too high for now since this makes it possible for an attacker to withdraw and deposit into vault at will
     // so in the first version it will be caller-restricted
-    function triggerDeposit(uint maxToPull) external onlyOwner() {
-        forceDepositAndCheck(asset.balanceOf(address(this)), msg.sender, maxToPull);
+    function triggerDeposit(uint amount, uint maxToPull) external onlyOwner() {
+        forceDepositAndCheck(amount, msg.sender, maxToPull);
     }
 
     // In some cases totalAssets() after coins are deposited into the yield vault, this could be used in an attack so this function ensures this never happens
