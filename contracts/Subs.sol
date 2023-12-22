@@ -42,7 +42,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
         feeCollector = _feeCollector;
     }
 
-    function _updateGlobal(uint limit) private {
+    function _updateGlobal(uint limit) private { // invariant: limit <= block.timestamp
         if(block.timestamp > currentPeriod + periodDuration){
             uint shares = convertToShares(DIVISOR);
             do {
@@ -70,7 +70,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
                 uint amountPerPeriod = bal.amountPerPeriod;
                 uint limitToFill = min(currentPeriod, limit);
                 do {
-                    // here lastUpdate < currentPeriod is always true
+                    // invariant: here lastUpdate < currentPeriod is always true
                     amountPerPeriod -= receiverAmountToExpire[receiver][lastUpdate];
                     balance += (amountPerPeriod * sharesPerPeriod[lastUpdate]) / DIVISOR;
                     lastUpdate += periodDuration;
