@@ -5,6 +5,13 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Owned} from "solmate/src/auth/Owned.sol";
 
+/*
+This is vulnerable to ERC4626 inflation attacks!
+See https://docs.openzeppelin.com/contracts/5.x/erc4626 and https://blog.openzeppelin.com/a-novel-defense-against-erc4626-inflation-attacks
+
+The deployer must always deposit some coins before displaying this in frontend for users to deposit
+*/
+
 abstract contract BaseAdapter is Owned {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
@@ -30,8 +37,9 @@ abstract contract BaseAdapter is Owned {
     // There's an argument for not caller-restricting this:
     //   redeem() doesn't support withdrawing money from both asset and vault, so in the case where the last user wants to withdraw
     //    and only 50% of money is in the vault, owner could increase minBalanceToTriggerDeposit to max to prevent new vault deposits
-    //    and prevent the user from getting the money, asking for a ransom. With this method user can simply call this to solve the situation
-    // However the danger seems too high for now since this makes it possible for an attacker to withdraw and deposit at will
+    //    and prevent the user from getting the money, asking for a ransom.
+    //    If this method was not caller-restricted, user could simply call it to solve that situation
+    // However the danger seems too high for now since this makes it possible for an attacker to withdraw and deposit into vault at will
     // so in the first version it will be caller-restricted
     function triggerDeposit(uint maxToPull) external onlyOwner() {
         forceDepositAndCheck(asset.balanceOf(address(this)), msg.sender, maxToPull);
@@ -54,7 +62,7 @@ abstract contract BaseAdapter is Owned {
     // Yield buffer
     //   Most of the gas cost in calls to subscribe() comes moving the coins into the yield-generating vault
     //   For small subscriptions this means that users might end up paying more in gas costs than the yield they generate,
-    //   so to greatly reduce gas costs and amortize them among all users we've implemented a yield buffer
+    //   so to greatly reduce gas costs and amortize them among all users we've implemented a yield buffer.
     //   When new coins are deposited they'll be simply stored in the contract, with no extra gas costs,
     //   then, when we trigger it, all coins will be moved to the yield vault, thus aggregating all these user deposits
     //   into a single large deposit for which we pay O(1) gas, thus amortizing costs.
