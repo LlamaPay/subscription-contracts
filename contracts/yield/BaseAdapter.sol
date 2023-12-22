@@ -68,10 +68,8 @@ abstract contract BaseAdapter is Owned {
     //   into a single large deposit for which we pay O(1) gas, thus amortizing costs.
     //   This means that some money will sit idle and not earn any yield, but thats ok.
     //   This also applies for withdrawals, if we have enough money in the buffer we'll just use that so we don't have to pull money from vault
-    function deposit(uint256 assets, uint256 amountPerCycle) internal returns (uint shares, uint cycles) {
-        uint newTotalAssets = totalAssets();
-        cycles = assets/amountPerCycle;
-        shares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, newTotalAssets - assets);
+    function deposit(uint256 assets) internal returns (uint shares) {
+        shares = totalSupply == 0 ? assets : assets.mulDivDown(totalSupply, totalAssets());
         totalSupply += shares;
     }
 

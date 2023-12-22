@@ -107,9 +107,10 @@ contract Subs is BoringBatchable, AaveV3Adapter {
     function _subscribe(address receiver, uint amountPerCycle, uint256 amountForFuture, uint claimableThisPeriod) internal
         returns (uint expirationDate, uint256, bytes32) {
         uint amount = amountForFuture + claimableThisPeriod;
-        asset.safeTransferFrom(msg.sender, address(this), amount);
         // If subscribed when timestamp == currentPeriod with cycles == 0, this will revert, which is fine since such subscription is for 0 seconds
-        (uint shares, uint cycles) = deposit(amount, amountPerCycle);
+        uint cycles = amountForFuture/amountPerCycle;
+        (uint shares) = deposit(amount);
+        asset.safeTransferFrom(msg.sender, address(this), amount);
         uint expiration = currentPeriod + periodDuration*cycles;
         // Setting receiverAmountToExpire here makes the implicit assumption than all calls to convertToShares(DIVISOR) within _updateGlobal() in the future will return a lower number than the one returned right now,
         // in other words, that the underlying vault will never lose money and its pricePerShare() will not go down
