@@ -105,6 +105,7 @@ describe("Subs", function () {
       await time.increase(3*24*3600);
       const prevBal = await token.balanceOf(daiWhale.address)
       const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), fe(5*12), 0), "NewDelayedSubscription");
+      await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()) - fe(0.000001), 0)
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(fe(5*12));
       await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
@@ -161,6 +162,7 @@ describe("Subs", function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
       const prevBal = await token.balanceOf(daiWhale.address)
       const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), fe(10*700))); // yield is 2%
+      await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()), 0)
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
       expect(diff).to.be.approximately(fe(7010), fe(1));
@@ -174,7 +176,12 @@ describe("Subs", function () {
       await subs.connect(subReceiver).claim((await subs.receiverBalances(subReceiver.address)).balance)
       const yieldGenerated = 10*(1+tokenYield)**5 - 10
       expect(await token.balanceOf(subReceiver.address)).to.be.approximately(fe((610+yieldGenerated)*0.99), fe(0.1));
-      expect(await subs.totalAssets()).to.be.approximately(0, 2);
+
+      console.log(await subs.receiverBalances(feeCollector.address))
+      await subs.connect(feeCollector).claim((await subs.receiverBalances(feeCollector.address)).balance)
+      expect(await token.balanceOf(feeCollector.address)).to.be.approximately(fe((610+yieldGenerated)*0.01), fe(0.1));
+
+      expect(await subs.totalAssets()).to.be.approximately(fe((610+yieldGenerated)*0.01*0.01), fe(0.01));
       const receiverBalance = await subs.receiverBalances(subReceiver.address)
       expect(receiverBalance.balance).to.be.eq(0);
       expect(receiverBalance.amountPerPeriod).to.be.eq(fe(10));
@@ -359,6 +366,7 @@ describe("Subs", function () {
       ], otherSubscriber)
       await token2.approve(await subs.getAddress(), fe(1e3))
       const otherSub = await getSub(subs.connect(otherSubscriber).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()), 0)
       let otherSubBalance = 91
       expect(await calculateSubBalance(otherSub, subs, await time.latest(), vault, fe(1), 30*24*3600)).to.be.approximately(fe(otherSubBalance), fe(0.1))
       //expect((await subs.receiverBalances(subReceiver.address)).balance).to.be.approximately(fe(14), fe(0))
@@ -388,7 +396,7 @@ describe("Subs", function () {
       expect(await token.balanceOf(otherSubscriber.address)-prevOtherBal).to.be.approximately(fe(otherSubBalance), fe(0.1))
       if(tokenYield > 0){
         expect(otherSubBalance).to.be.above(1.2)
-        expect(otherSubBalance).to.be.below(1.6)
+        expect(otherSubBalance).to.be.below(1.8)
       }
       expect((await subs.receiverBalances(await subs.getAddress())).balance).to.be.approximately(0, 4)
       await time.increase(5*30*24*3600);

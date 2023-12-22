@@ -7,7 +7,7 @@ describe("perf", function () {
         const [subReceiver, feeCollector] = await ethers.getSigners();
         const daiWhale = await ethers.getImpersonatedSigner(whaleAddress);
         const Subs = await ethers.getContractFactory("Subs");
-        const subs = await Subs.deploy(30 * 24 * 3600, vaultAddress, feeCollector.address, 1694919024, feeCollector.address, stakingRewards, fe(50));
+        const subs = await Subs.deploy(30 * 24 * 3600, vaultAddress, feeCollector.address, 1694919024, feeCollector.address, stakingRewards);
 
         const token = new ethers.Contract(tokenAddress, [
             "function approve(address spender, uint256 amount) external returns (bool)",
