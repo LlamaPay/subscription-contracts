@@ -9,7 +9,7 @@ import {Owned} from "solmate/src/auth/Owned.sol";
 This is vulnerable to ERC4626 inflation attacks!
 See https://docs.openzeppelin.com/contracts/5.x/erc4626 and https://blog.openzeppelin.com/a-novel-defense-against-erc4626-inflation-attacks
 
-The deployer must always deposit some coins before displaying this in frontend for users to deposit
+This is solved through SubsFactory, which creates some shares upon deployment and burns them.
 */
 
 abstract contract BaseAdapter is Owned {
@@ -23,8 +23,9 @@ abstract contract BaseAdapter is Owned {
 
     constructor(
         address asset_,
-        address rewardRecipient_
-    ) Owned(msg.sender) {
+        address rewardRecipient_,
+        address owner_
+    ) Owned(owner_) {
         asset = ERC20(asset_);
         rewardRecipient = rewardRecipient_;
         DIVISOR = 10**asset.decimals(); // Even if decimals() changes later this will still work fine

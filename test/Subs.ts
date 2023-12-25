@@ -77,8 +77,17 @@ describe("Subs", function () {
     ], daiWhale)
 
     const startTimestamp =  await time.latest()
-    const Subs = await ethers.getContractFactory("Subs");
-    const subs = await Subs.deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards);
+    const SubsFactory = await ethers.getContractFactory("SubsFactory");
+    const subsFactory = await SubsFactory.deploy()
+
+    async function deploy(...args:any){
+      await token.transfer(owner.address, fe(1))
+      await (token.connect(owner) as any).approve(await subsFactory.getAddress(), fe(1))
+      await subsFactory.createContract(...args);
+      const Subs = await ethers.getContractFactory("Subs")
+      return Subs.attach(await subsFactory.getContractByIndex(0)) as Awaited<ReturnType<typeof Subs.deploy>>;
+    }
+    const subs = await deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, owner.address)
 
     const vault = new ethers.Contract(await subs.getAddress(),[
       //"function balanceOf(address account) external view returns (uint256)",
@@ -88,7 +97,7 @@ describe("Subs", function () {
 
     await token.approve(await subs.getAddress(), fe(1e6))
 
-    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault, otherSubscriber, startTimestamp };
+    return { subs, token, owner, subReceiver, feeCollector, daiWhale, vault, otherSubscriber, startTimestamp, deploy };
   }
 
   describe("Basic", function () {
@@ -125,7 +134,7 @@ describe("Subs", function () {
       await time.increase(100*30*24*3600);
       await subs.connect(subReceiver).claim(fe(total))
       expect(await token.balanceOf(subReceiver.address)).to.eq(fe(total)*99n/100n);
-      expect(await subs.totalAssets()).to.eq(fe(total)/100n)
+      expect(await subs.totalAssets()).to.eq(fe(total)/100n+fe(1))
       const prevBal = await token.balanceOf(daiWhale.address)
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(0);
@@ -305,10 +314,9 @@ describe("Subs", function () {
 
     it("amount instantly pulled is correct when periodDuration is 5mins", async function () {
       const periodDuration = 5*60
-      const { daiWhale, subReceiver, token, feeCollector } = await loadFixture(deployFixture);
+      const { daiWhale, subReceiver, token, feeCollector, deploy, owner } = await loadFixture(deployFixture);
       const start = await time.latest()
-      const Subs = await ethers.getContractFactory("Subs");
-      const subs = await Subs.deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards);
+      const subs = await deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards, owner.address);
       await token.approve(await subs.getAddress(), fe(1e6))
       for(let i=1; i<20; i++){
         await time.increaseTo(start + i*periodDuration*2); // restart to beginning of period

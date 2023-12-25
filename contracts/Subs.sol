@@ -29,7 +29,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
-        address stakingRewards_) AaveV3Adapter(_vault, rewardRecipient_, stakingRewards_){
+        address stakingRewards_, address owner_) AaveV3Adapter(_vault, rewardRecipient_, stakingRewards_, owner_){
         // periodDuration MUST NOT be a very small number, otherwise loops could end growing big and blowing up gas costs
         // At 500-600 cycles you start running into ethereum's gas limit per block, which would make it impossible to call the contract
         // We solve that by adding a method that lets users update state partially, so you can split a 20 years update into 4 calls that update 5 years each
