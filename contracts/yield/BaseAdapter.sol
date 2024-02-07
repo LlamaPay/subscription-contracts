@@ -43,18 +43,18 @@ abstract contract BaseAdapter is Owned {
     // However the danger seems too high for now since this makes it possible for an attacker to withdraw and deposit into vault at will
     // so in the first version it will be caller-restricted
     function triggerDeposit(uint amount, uint maxToPull) external onlyOwner() {
-        forceDepositAndCheck(amount, msg.sender, maxToPull);
+        forceDepositAndCheck(amount, maxToPull);
     }
 
     // In some cases totalAssets() after coins are deposited into the yield vault, this could be used in an attack so this function ensures this never happens
-    function forceDepositAndCheck(uint amount, address receiver, uint maxToPull) internal {
+    function forceDepositAndCheck(uint amount, uint maxToPull) internal {
         uint oldTotalAssets = totalAssets();
         forceDeposit(amount);
         uint newTotalAssets = totalAssets();
         if(newTotalAssets < oldTotalAssets){
             uint pullAmount = oldTotalAssets - newTotalAssets;
             require(pullAmount < maxToPull, ">maxToPull");
-            asset.transferFrom(receiver, address(this), pullAmount);
+            asset.transferFrom(msg.sender, address(this), pullAmount);
         }
     }
 
