@@ -54,7 +54,7 @@ abstract contract BaseAdapter is Owned {
         if(newTotalAssets < oldTotalAssets){
             uint pullAmount = oldTotalAssets - newTotalAssets;
             require(pullAmount < maxToPull, ">maxToPull");
-            asset.transferFrom(msg.sender, address(this), pullAmount);
+            asset.safeTransferFrom(msg.sender, address(this), pullAmount);
         }
     }
 
