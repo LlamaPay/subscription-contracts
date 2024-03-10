@@ -146,6 +146,7 @@ contract Subs is BoringBatchable, AaveV3Adapter {
     // However that adds a lot of code that could introduce bugs, and subscribeForNextPeriod() should be rarely called
     // So I don't think that optimization is worth the security trade-offs
     function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 amountForFuture, uint256 instantPayment) external {
+        require(amountForFuture >= amountPerCycle, "amountForFuture < amountPerCycle");
         _updateReceiver(receiver, block.timestamp);
         (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, amountForFuture, instantPayment);
         emit NewDelayedSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId, instantPayment);
