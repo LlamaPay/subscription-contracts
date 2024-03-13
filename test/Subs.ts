@@ -87,7 +87,7 @@ describe("Subs", function () {
       const Subs = await ethers.getContractFactory("Subs")
       return Subs.attach(await subsFactory.getContractByIndex(0)) as Awaited<ReturnType<typeof Subs.deploy>>;
     }
-    const subs = await deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, owner.address)
+    const subs = await deploy(30*24*3600, vaultAddress, feeCollector.address, startTimestamp, feeCollector.address, stakingRewards, owner.address, fe(1))
 
     const vault = new ethers.Contract(await subs.getAddress(),[
       //"function balanceOf(address account) external view returns (uint256)",
@@ -316,7 +316,7 @@ describe("Subs", function () {
       const periodDuration = 5*60
       const { daiWhale, subReceiver, token, feeCollector, deploy, owner } = await loadFixture(deployFixture);
       const start = await time.latest()
-      const subs = await deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards, owner.address);
+      const subs = await deploy(periodDuration, vaultAddress, feeCollector.address, start, feeCollector.address, stakingRewards, owner.address, fe(1));
       await token.approve(await subs.getAddress(), fe(1e6))
       for(let i=1; i<20; i++){
         await time.increaseTo(start + i*periodDuration*2); // restart to beginning of period
@@ -375,7 +375,7 @@ describe("Subs", function () {
     })
 
     it("2 subscribers + refreshApproval", async function () {
-      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
+      const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber, owner } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
       const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(7), fe(7*10)));
       await time.increase(2*30*24*3600);
@@ -388,7 +388,8 @@ describe("Subs", function () {
       ], otherSubscriber)
       await token2.approve(await subs.getAddress(), fe(1e3))
       const otherSub = await getSub(subs.connect(otherSubscriber).subscribe(subReceiver.address, fe(13), fe(13*7)));
-      await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()), 0)
+      await (token.connect(owner) as any).approve(await subs.getAddress(), 2n)
+      await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()), 2)
       let otherSubBalance = 91
       expect(await calculateSubBalance(otherSub, subs, await time.latest(), vault, fe(1), 30*24*3600)).to.be.approximately(fe(otherSubBalance), fe(0.1))
       //expect((await subs.receiverBalances(subReceiver.address)).balance).to.be.approximately(fe(14), fe(0))
