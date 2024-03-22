@@ -18,8 +18,8 @@ const func = async function (hre:any) {
   startDay.setMinutes(0)
   startDay.setSeconds(0)
   startDay.setMilliseconds(0)
-  const logs = await (await subsFactory.createContract(24*60*60, "0x82e64f49ed5ec1bc6e43dad4fc8af9bb3a2312ee", deployer, Math.floor(startDay.getTime()/1e3),
-  deployer, "0x929EC64c34a17401F460460D4B9390518E5B473e", deployer)).wait()
+  const logs = await (await subsFactory.createContract(30*24*60*60, "0x82e64f49ed5ec1bc6e43dad4fc8af9bb3a2312ee", deployer, 1704067200,
+  deployer, "0x929EC64c34a17401F460460D4B9390518E5B473e", deployer, 1000000000000000000n)).wait()
   console.log(logs)
 };
 module.exports = func;
