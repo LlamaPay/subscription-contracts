@@ -28,7 +28,7 @@ contract SubsFactory is Owned {
         */
         token.safeTransferFrom(msg.sender, address(this), unit); // unit needs to be high enough (eg ~1$ is enough)
         token.approve(address(subsContract), unit);
-        subsContract.subscribeForNextPeriod(address(this), unit, unit, 0);
+        subsContract.subscribeForNextPeriod(address(this), unit, unit, 0, "");
 
         // Append the new contract address to the array of deployed contracts
         uint256 index = getContractCount;

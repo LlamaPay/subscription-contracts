@@ -24,8 +24,8 @@ contract Subs is BoringBatchable, AaveV3Adapter {
     mapping(uint256 => uint256) public sharesPerPeriod;
     mapping(bytes32 => bool) public subs;
 
-    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId);
-    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId, uint instantPayment);
+    event NewSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId, bytes32 paymentId);
+    event NewDelayedSubscription(address owner, uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares, bytes32 subId, uint instantPayment, bytes32 paymentId);
     event Unsubscribe(bytes32 subId);
 
     constructor(uint _periodDuration, address _vault, address _feeCollector, uint _currentPeriod, address rewardRecipient_,
@@ -125,14 +125,14 @@ contract Subs is BoringBatchable, AaveV3Adapter {
         return (expiration, sharesLeft, subId);
     }
 
-    function subscribe(address receiver, uint amountPerCycle, uint256 amountForFuture) external {
+    function subscribe(address receiver, uint amountPerCycle, uint256 amountForFuture, bytes32 paymentId) external {
         _updateReceiver(receiver, block.timestamp);
         // block.timestamp <= currentPeriod + periodDuration is enforced in _updateGlobal() and currentPeriod < block.timestamp
         // so 0 <= (currentPeriod + periodDuration - block.timestamp) <= periodDuration
         // thus this will never underflow and claimableThisPeriod <= amountPerCycle
         uint claimableThisPeriod = (amountPerCycle * (currentPeriod + periodDuration - block.timestamp)) / periodDuration;
         (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, amountForFuture, claimableThisPeriod);
-        emit NewSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId);
+        emit NewSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId, paymentId);
     }
 
     // Copy of subscribe() but with claimableThisPeriod set by the user
@@ -145,11 +145,11 @@ contract Subs is BoringBatchable, AaveV3Adapter {
     // like setting receiverBalances[receiver].balance. This saves 200 gas for subscribe() and 3k gas for subscribeForNextPeriod()
     // However that adds a lot of code that could introduce bugs, and subscribeForNextPeriod() should be rarely called
     // So I don't think that optimization is worth the security trade-offs
-    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 amountForFuture, uint256 instantPayment) external {
+    function subscribeForNextPeriod(address receiver, uint amountPerCycle, uint256 amountForFuture, uint256 instantPayment, bytes32 paymentId) external {
         require(amountForFuture >= amountPerCycle, "amountForFuture < amountPerCycle");
         _updateReceiver(receiver, block.timestamp);
         (uint expirationDate, uint256 sharesLeft, bytes32 subId) = _subscribe(receiver, amountPerCycle, amountForFuture, instantPayment);
-        emit NewDelayedSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId, instantPayment);
+        emit NewDelayedSubscription(msg.sender, currentPeriod, expirationDate, amountPerCycle, receiver, sharesAccumulator, sharesLeft, subId, instantPayment, paymentId);
     }
 
     function unsubscribe(uint initialPeriod, uint expirationDate, uint amountPerCycle, address receiver, uint256 accumulator, uint256 initialShares) external {
