@@ -5,7 +5,7 @@ import {
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { getSub, unsubscribeParams } from "./helpers"
-import { tokenAddress, vaultAddress, whaleAddress, tokenYield, stakingRewards, fe, de, dd, minDepositToTriggerDeploy } from "./constats";
+import { tokenAddress, vaultAddress, whaleAddress, tokenYield, stakingRewards, fe, de, dd, paymentId } from "./constats";
 
 function yieldEarned(days:number, totalDeposit:number){
   return fe(totalDeposit*tokenYield*days/365)
@@ -103,24 +103,24 @@ describe("Subs", function () {
   describe("Basic", function () {
     it("Should work", async function () {
       const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
-      const firstSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), fe(5e3*12)));
+      const firstSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), fe(5e3*12), paymentId));
       await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
-      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0, paymentId);
     });
 
     it("subscribeForNextPeriod", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       await time.increase(3*24*3600);
       const prevBal = await token.balanceOf(daiWhale.address)
-      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), fe(5*12), 0), "NewDelayedSubscription");
+      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), fe(5*12), 0, paymentId), "NewDelayedSubscription");
       await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()) - fe(0.000001), 0)
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.eq(fe(5*12));
       await time.increase(30*24*3600);
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(firstSub))
       expect(prevBal - await token.balanceOf(daiWhale.address)).to.be.approximately(fe(5) - yieldEarned(30, 5*12), fe(0.0001));
       const prevBal2 = await token.balanceOf(daiWhale.address)
-      const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), fe(12*1), 0), "NewDelayedSubscription");
+      const secondSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(12), fe(12*1), 0, paymentId), "NewDelayedSubscription");
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(secondSub))
       expect(await token.balanceOf(daiWhale.address)).to.be.lessThanOrEqual(prevBal2 + fe(0.00000002));
       expect(await token.balanceOf(daiWhale.address) - prevBal2).to.be.above(-5);
@@ -130,7 +130,7 @@ describe("Subs", function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       await time.increase(3*24*3600);
       const total = 5*12+1000
-      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), fe(5*12), fe(1000)), "NewDelayedSubscription");
+      const firstSub = await getSub(subs.connect(daiWhale).subscribeForNextPeriod(subReceiver.address, fe(5), fe(5*12), fe(1000), paymentId), "NewDelayedSubscription");
       await time.increase(100*30*24*3600);
       await subs.connect(subReceiver).claim(fe(total))
       expect(await token.balanceOf(subReceiver.address)).to.eq(fe(total)*99n/100n);
@@ -143,7 +143,7 @@ describe("Subs", function () {
     it("Should reduce funds", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       const prevBal = await token.balanceOf(daiWhale.address)
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), fe(5e3*12)));
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), fe(5e3*12), paymentId));
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
       expect(diff).to.be.approximately(fe(5e3*13), fe(1));
@@ -156,7 +156,7 @@ describe("Subs", function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
       await time.increase(30*24*3600*0.7);
       const prevBal = await token.balanceOf(daiWhale.address)
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0));
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), 0, paymentId));
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
       expect(diff).to.be.approximately(fe(5e3*0.3), fe(1));
@@ -164,14 +164,14 @@ describe("Subs", function () {
 
     it("cant pause withdrawals", async function () {
       const { subs, daiWhale, subReceiver, token } = await loadFixture(deployFixture);
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10)));
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10), paymentId));
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
-      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10))
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5), fe(5*10), paymentId)
     });
 
     it("receiver & feeCollector gets funds properly", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
-      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), fe(5e3*12));
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(5e3), fe(5e3*12), paymentId);
       console.log(await subs.currentPeriod(), await time.latest(), await time.latest() - Number(await subs.currentPeriod()))
       const shares = await vault.convertToShares(fe(5e3))
       const receiverSharesBalance = (await subs.receiverBalances(subReceiver.address)).balance
@@ -184,7 +184,7 @@ describe("Subs", function () {
     it("if yield is higher than costs, user doesnt lose money", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
       const prevBal = await token.balanceOf(daiWhale.address)
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), fe(10*700))); // yield is 2%
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), fe(10*700), paymentId)); // yield is 2%
       await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()), 0)
 
       const diff = prevBal - await token.balanceOf(daiWhale.address)
@@ -209,14 +209,14 @@ describe("Subs", function () {
       expect(receiverBalance.balance).to.be.eq(0);
       expect(receiverBalance.amountPerPeriod).to.be.eq(fe(10));
       await time.increase(30*24*3600);
-      await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.0001), fe(0.0001*700)));
+      await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.0001), fe(0.0001*700), paymentId));
       expect((await subs.receiverBalances(subReceiver.address)).amountPerPeriod).to.be.eq(fe(0.0001));
     });
 
     it("can claim right after currentPeriod changes", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
-      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7), paymentId));
       await time.increase(2*24*3600);
       await subs.connect(subReceiver).claim(fe(13.1));
     })
@@ -226,7 +226,7 @@ describe("Subs", function () {
 
     it("cant unsub twice", async function () {
       const { subs, daiWhale, subReceiver } = await loadFixture(deployFixture);
-      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7), paymentId));
       await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))
       await expect(subs.connect(daiWhale).unsubscribe(...unsubscribeParams(whaleSub))).to.be.reverted
     })
@@ -248,7 +248,7 @@ describe("Subs", function () {
       const periodDuration = Number(await subs.periodDuration())
       const prevBal1 = await token.balanceOf(daiWhale.address)
       await time.increaseTo(startTimestamp+periodDuration-1)
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7), paymentId));
       expect(await token.balanceOf(daiWhale.address) - prevBal1).to.be.eq(-fe(91))
       expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
       await time.increaseTo(startTimestamp+periodDuration*7-1)
@@ -271,7 +271,7 @@ describe("Subs", function () {
       const periodDuration = Number(await subs.periodDuration())
       const prevBal1 = await token.balanceOf(daiWhale.address)
       await time.increaseTo(startTimestamp+periodDuration-1)
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7), paymentId));
       expect(await token.balanceOf(daiWhale.address) - prevBal1).to.be.eq(-fe(91))
       expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
       await time.increaseTo(startTimestamp+periodDuration*7-2)
@@ -294,7 +294,7 @@ describe("Subs", function () {
       const periodDuration = Number(await subs.periodDuration())
       const prevBal1 = await token.balanceOf(daiWhale.address)
       await time.increaseTo(startTimestamp+periodDuration-1)
-      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)+100n));
+      const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)+100n, paymentId));
       expect(await token.balanceOf(daiWhale.address) - prevBal1).to.be.eq(-fe(91)-100n)
       expect((await subs.receiverBalances(subReceiver.address)).balance).to.eq(0)
       await time.increaseTo(startTimestamp+periodDuration*7)
@@ -323,7 +323,7 @@ describe("Subs", function () {
         const increase = Math.round(Math.random()*periodDuration)
         await time.increase(increase);
         const prevBal = await token.balanceOf(daiWhale.address)
-        await subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), 0)
+        await subs.connect(daiWhale).subscribe(subReceiver.address, fe(10), 0, paymentId)
         const postBal = await token.balanceOf(daiWhale.address)
         expect(prevBal-postBal).to.be.approximately((fe(10)*BigInt(periodDuration-increase))/BigInt(periodDuration), 
           (fe(10)*5n)/BigInt(periodDuration)) // 5s of leeway
@@ -333,7 +333,7 @@ describe("Subs", function () {
     it("balance through months", async function () {
       const { subs, daiWhale, subReceiver, token, vault } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
-      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)+100n));
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)+100n, paymentId));
       for(let i=0; i<14; i++){
         console.log(dd(await time.latest()), de(await calculateSubBalance(whaleSub, subs, await time.latest(), vault, fe(1), 30*24*3600)))
         await time.increase(30*24*3600);
@@ -357,7 +357,7 @@ describe("Subs", function () {
       const DIVISOR = fe(1)
       expect(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, DIVISOR, 30*24*3600)).to.be.eq(0)
       await time.increase(29*24*3600);
-      await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(13), fe(13*7), paymentId));
       let expectedClaimable = 0n
       for(let i=0; i<14; i++){
         const claimable = await vault.convertToAssets(await calculateAvailableToClaim(subReceiver.address, subs, await time.latest(), vault, DIVISOR, 30*24*3600))
@@ -377,7 +377,7 @@ describe("Subs", function () {
     it("2 subscribers + refreshApproval", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector, otherSubscriber, owner } = await loadFixture(deployFixture);
       await time.increase(29*24*3600);
-      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(7), fe(7*10)));
+      const whaleSub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(7), fe(7*10), paymentId));
       await time.increase(2*30*24*3600);
       await subs.refreshApproval();
 
@@ -387,7 +387,7 @@ describe("Subs", function () {
         "function approve(address spender, uint256 amount) external returns (bool)"
       ], otherSubscriber)
       await token2.approve(await subs.getAddress(), fe(1e3))
-      const otherSub = await getSub(subs.connect(otherSubscriber).subscribe(subReceiver.address, fe(13), fe(13*7)));
+      const otherSub = await getSub(subs.connect(otherSubscriber).subscribe(subReceiver.address, fe(13), fe(13*7), paymentId));
       await (token.connect(owner) as any).approve(await subs.getAddress(), 2n)
       await subs.triggerDeposit(await token.balanceOf(await subs.getAddress()), 2)
       let otherSubBalance = 91
@@ -429,17 +429,17 @@ describe("Subs", function () {
 
     it("claim after 2 periods", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
-      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0, paymentId);
       await time.increase(2*30*24*3600);
       await subs.connect(subReceiver).claim(fe(0.9));
     })
 
     it("max out _updateGlobal gas", async function () {
       const { subs, daiWhale, subReceiver, token, vault, feeCollector } = await loadFixture(deployFixture);
-      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0);
+      await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0, paymentId);
       const cycles = 500
       await time.increase(cycles*30*24*3600);
-      const rec = await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0)
+      const rec = await subs.connect(daiWhale).subscribe(subReceiver.address, fe(1), 0, paymentId)
       expect((await rec.wait())?.gasUsed).to.be.lessThan(15e6) // 15M is the block limit
     })
   });

@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { getSub, unsubscribeParams } from "./helpers"
-import { fe, stakingRewards, tokenAddress, vaultAddress, whaleAddress } from "./constats";
+import { fe, paymentId, stakingRewards, tokenAddress, vaultAddress, whaleAddress } from "./constats";
 
 describe("perf", function () {
     it("Should work", async function () {
@@ -13,8 +13,8 @@ describe("perf", function () {
             "function approve(address spender, uint256 amount) external returns (bool)",
         ], daiWhale)
         await token.approve(await subs.getAddress(), fe(1e6))
-        await subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.1), fe(0.1*2))
-        const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.15), fe(0.15*2)))
+        await subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.1), fe(0.1*2), paymentId)
+        const sub = await getSub(subs.connect(daiWhale).subscribe(subReceiver.address, fe(0.15), fe(0.15*2), paymentId))
 
         await subs.connect(daiWhale).unsubscribe(...unsubscribeParams(sub))
     });
