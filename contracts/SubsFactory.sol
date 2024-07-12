@@ -11,7 +11,7 @@ contract SubsFactory is Owned {
     uint256 public getContractCount;
     address[1000000000] public getContractByIndex;
 
-    event SubsCreated(address subsContract);
+    event SubsCreated(address subsContract, address token, uint periodDuration, address vault, address feeCollector, uint currentPeriod, address rewardRecipient, address stakingRewards, address owner);
 
     constructor() Owned(msg.sender) {}
 
@@ -37,6 +37,6 @@ contract SubsFactory is Owned {
             getContractCount = index + 1;
         }
 
-        emit SubsCreated(address(subsContract));
+        emit SubsCreated(address(subsContract), address(token), _periodDuration, _vault, _feeCollector, _currentPeriod, rewardRecipient_, stakingRewards_, owner_);
     }
 }
