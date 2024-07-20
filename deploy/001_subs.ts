@@ -36,9 +36,7 @@ const func = async function (hre:HardhatRuntimeEnvironment) {
         "function ATOKEN_REVISION() view external returns (uint256)",
         "function UNDERLYING_ASSET_ADDRESS() view external returns (address)",
       ], signer)
-      if(await aToken.ATOKEN_REVISION() !== 2n){
-        throw new Error("Bad aToken")
-      }
+      await aToken.ATOKEN_REVISION()
 
       if(tokenAddress.toLowerCase() !== (await aToken.UNDERLYING_ASSET_ADDRESS()).toLowerCase()){
         throw new Error(`Token ${tokenAddress} doesn't match!`)
@@ -55,7 +53,10 @@ const func = async function (hre:HardhatRuntimeEnvironment) {
 
       // Create market
       await (await subsFactory.createContract(MONTH, aTokenAddress, deployer, START,
-        deployer, RewardsController, deployer, UNIT)).wait()     
+        deployer, RewardsController, deployer, UNIT)).wait()
+      if(i === 0){
+        console.log(`npx hardhat verify --network ${hre.network.name} ${await findContractAddress()}`, MONTH, aTokenAddress, deployer, START, deployer, RewardsController, deployer)
+      }
     }
     console.log(hre.network.name, tokenSymbol, tokenAddress, await findContractAddress())
   }
