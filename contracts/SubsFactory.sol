@@ -27,7 +27,7 @@ contract SubsFactory is Owned {
         To mitigate this we deposit some coins and burn the shares by assigning them to this contract, from which they can't be retrieved.
         */
         token.safeTransferFrom(msg.sender, address(this), unit); // unit needs to be high enough (eg ~1$ is enough)
-        token.approve(address(subsContract), unit);
+        token.safeApprove(address(subsContract), unit);
         subsContract.subscribeForNextPeriod(address(this), unit, unit, 0, "");
 
         // Append the new contract address to the array of deployed contracts

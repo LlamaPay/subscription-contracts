@@ -21,6 +21,8 @@ interface IRewardsController {
 }
 
 contract AaveV3Adapter is BaseAdapter {
+    using SafeTransferLib for ERC20;
+
     ERC20 public immutable aToken;
     IPool public immutable lendingPool;
     IRewardsController public immutable rewardsController;
@@ -34,7 +36,7 @@ contract AaveV3Adapter is BaseAdapter {
         lendingPool = IPool(AToken(aToken_).POOL());
         aToken = ERC20(aToken_);
         rewardsController = IRewardsController(rewardsController_);
-        asset.approve(address(lendingPool), type(uint256).max);
+        asset.safeApprove(address(lendingPool), type(uint256).max);
     }
 
     // If the rewards are donated back to the vault, this mechanism is vulnerable to an attack where someone joins the pool, rewards are distributed, and then he leaves
@@ -60,7 +62,7 @@ contract AaveV3Adapter is BaseAdapter {
     }
 
     function refreshApproval() external override {
-        asset.approve(address(lendingPool), 0);
-        asset.approve(address(lendingPool), type(uint256).max);
+        asset.safeApprove(address(lendingPool), 0);
+        asset.safeApprove(address(lendingPool), type(uint256).max);
     }
 }
